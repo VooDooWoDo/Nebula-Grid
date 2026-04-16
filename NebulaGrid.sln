@@ -1,0 +1,30 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31912.275
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NebulaGrid.Client", "NebulaGrid.Client\NebulaGrid.Client.csproj", "{79CCE320-3304-4942-B10F-9555F041E261}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NebulaGrid.Server", "NebulaGrid.Server\NebulaGrid.Server.csproj", "{B04ADFBC-0868-4039-8F52-0FA6F808A141}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NebulaGrid.Shared", "NebulaGrid.Shared\NebulaGrid.Shared.csproj", "{0906F81F-A5D5-453F-A1B6-5425BA83E1C6}"
+EndProject
+Global
+    GlobalSection(SolutionConfigurationPlatforms) = preSolution
+        Debug|Any CPU = Debug|Any CPU
+        Release|Any CPU = Release|Any CPU
+    EndGlobalSection
+    GlobalSection(ProjectConfigurationPlatforms) = postSolution
+        {79CCE320-3304-4942-B10F-9555F041E261}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {79CCE320-3304-4942-B10F-9555F041E261}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {79CCE320-3304-4942-B10F-9555F041E261}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {79CCE320-3304-4942-B10F-9555F041E261}.Release|Any CPU.Build.0 = Release|Any CPU
+        {B04ADFBC-0868-4039-8F52-0FA6F808A141}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {B04ADFBC-0868-4039-8F52-0FA6F808A141}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {B04ADFBC-0868-4039-8F52-0FA6F808A141}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {B04ADFBC-0868-4039-8F52-0FA6F808A141}.Release|Any CPU.Build.0 = Release|Any CPU
+        {0906F81F-A5D5-453F-A1B6-5425BA83E1C6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {0906F81F-A5D5-453F-A1B6-5425BA83E1C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {0906F81F-A5D5-453F-A1B6-5425BA83E1C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {0906F81F-A5D5-453F-A1B6-5425BA83E1C6}.Release|Any CPU.Build.0 = Release|Any CPU
+    EndGlobalSection
+EndGlobal

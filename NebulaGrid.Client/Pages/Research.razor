@@ -1,0 +1,455 @@
+@page "/research"
+@using System.Net.Http.Json
+@using NebulaGrid.Shared.Models
+@using NebulaGrid.Shared.Services
+@inject PlayerService PlayerService
+@inject GameStatus Status
+@inject HttpClient HttpClient
+@implements IDisposable
+
+<PageTitle>Research Lab - Nebula Grid</PageTitle>
+
+@if (!PlayerService.IsAreaUnlocked("research"))
+{
+    <div class="research-shell">
+        <div class="status-banner">Research Lab is locked. @PlayerService.GetUnlockText("research"). Current Pilot Level: @PlayerService.CurrentLevel.</div>
+    </div>
+}
+else
+{
+
+<div class="research-shell">
+    <div class="research-header">
+        <div>
+            <p class="eyebrow">Research Lab</p>
+            <h1>Long-cycle upgrades for your empire</h1>
+            <p class="lede">Fuel and biomass now feed your research lab. Invest them into permanent upgrades that reshape mining, cargo routing, and reactor crit output.</p>
+        </div>
+        <div class="research-side-panels">
+            <div class="fuel-panel">
+                <span>Available Fuel</span>
+                <strong>@PlayerService.Resource2</strong>
+            </div>
+            <div class="fuel-panel biomass-panel">
+                <span>Available Biomass</span>
+                <strong>@PlayerService.Biomass</strong>
+            </div>
+            <div class="xp-panel">
+                <span>Pilot Progress</span>
+                <strong>LVL @PlayerService.CurrentLevel</strong>
+                <small>@PlayerService.CurrentXP / @GetXpThreshold() XP</small>
+                <div class="xp-track">
+                    <div class="xp-fill" style="width: @GetXpPercent().ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="status-banner">@statusMessage</div>
+    }
+
+    <div class="research-grid">
+        @foreach (var node in nodes)
+        {
+            <article class="research-card">
+                <div class="research-meta">
+                    <span class="research-tag">@node.Tag</span>
+                    <span class="research-level">LVL @node.Level</span>
+                </div>
+
+                <h2>@node.Title</h2>
+                <p>@node.Description</p>
+
+                <div class="research-effect">@node.EffectText(node.Level)</div>
+
+                <button class="research-button"
+                        @onclick="() => BuyResearchAsync(node.Key)"
+                        disabled="@(PlayerService.SelectedPlayerId <= 0 || PlayerService.Resource2 < node.FuelCost || PlayerService.Biomass < node.BiomassCost)">
+                    Upgrade for @node.FuelCost Fuel • @node.BiomassCost Biomass
+                </button>
+            </article>
+        }
+    </div>
+</div>
+
+}
+
+<style>
+    .research-shell {
+        min-height: calc(100vh - 120px);
+        padding: 32px;
+        color: #f4f0e8;
+        background:
+            radial-gradient(circle at top left, rgba(220, 140, 42, 0.2), transparent 30%),
+            radial-gradient(circle at bottom right, rgba(0, 122, 145, 0.22), transparent 28%),
+            linear-gradient(145deg, #09131a, #121a25 55%, #1d1610);
+    }
+
+    .research-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 28px;
+    }
+
+    .research-side-panels {
+        display: grid;
+        gap: 14px;
+        min-width: 220px;
+    }
+
+    .eyebrow {
+        margin: 0 0 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: #f1ae56;
+        font-size: 0.78rem;
+    }
+
+    .research-header h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.4rem);
+        line-height: 1;
+    }
+
+    .lede {
+        max-width: 720px;
+        color: rgba(244, 240, 232, 0.78);
+    }
+
+    .fuel-panel {
+        min-width: 180px;
+        padding: 18px 20px;
+        border-radius: 18px;
+        background: rgba(8, 20, 28, 0.82);
+        border: 1px solid rgba(241, 174, 86, 0.32);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
+    }
+
+    .fuel-panel span {
+        display: block;
+        color: rgba(244, 240, 232, 0.65);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.72rem;
+    }
+
+    .fuel-panel strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 2rem;
+        color: #f1ae56;
+    }
+
+    .biomass-panel {
+        border-color: rgba(146, 255, 198, 0.26);
+    }
+
+    .biomass-panel strong {
+        color: #92ffc6;
+    }
+
+    .xp-panel {
+        padding: 18px 20px;
+        border-radius: 18px;
+        background: rgba(8, 20, 28, 0.82);
+        border: 1px solid rgba(125, 226, 255, 0.28);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
+    }
+
+    .xp-panel span,
+    .xp-panel small {
+        display: block;
+        color: rgba(244, 240, 232, 0.68);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.72rem;
+    }
+
+    .xp-panel strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 1.35rem;
+        color: #7de2ff;
+    }
+
+    .xp-panel small {
+        margin-top: 8px;
+        text-transform: none;
+        letter-spacing: normal;
+        font-size: 0.85rem;
+    }
+
+    .xp-track {
+        margin-top: 10px;
+        height: 8px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    .xp-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #007a91, #7de2ff);
+        transition: width 0.2s ease;
+    }
+
+    .status-banner {
+        margin-bottom: 18px;
+        padding: 12px 16px;
+        border-radius: 14px;
+        background: rgba(0, 122, 145, 0.18);
+        border: 1px solid rgba(125, 226, 255, 0.28);
+        color: #a8efff;
+    }
+
+    .research-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 18px;
+    }
+
+    .research-card {
+        padding: 20px;
+        border-radius: 22px;
+        background: rgba(8, 20, 28, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 18px 32px rgba(0, 0, 0, 0.24);
+    }
+
+    .research-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .research-tag {
+        color: #7de2ff;
+    }
+
+    .research-level {
+        color: #f1ae56;
+    }
+
+    .research-card h2 {
+        margin: 0 0 10px;
+    }
+
+    .research-card p {
+        margin: 0;
+        color: rgba(244, 240, 232, 0.78);
+        line-height: 1.5;
+    }
+
+    .research-effect {
+        margin: 18px 0;
+        color: #f1ae56;
+        font-weight: 600;
+    }
+
+    .research-button {
+        width: 100%;
+        border: none;
+        border-radius: 999px;
+        padding: 12px 16px;
+        background: linear-gradient(90deg, #f1ae56, #f56d3d);
+        color: #15100a;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .research-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+    }
+
+    @@media (max-width: 760px) {
+        .research-shell {
+            padding: 20px;
+        }
+
+        .research-header {
+            flex-direction: column;
+            align-items: stretch;
+        }
+    }
+</style>
+
+@code {
+    private readonly List<ResearchNodeViewModel> nodes = new();
+    private string? statusMessage;
+    private int hydratedPlayerId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Status.OnResourceChanged += HandleResourceChanged;
+        await EnsureLoadedAsync();
+    }
+
+    private async Task EnsureLoadedAsync()
+    {
+        if (nodes.Count == 0)
+        {
+            InitializeNodes();
+        }
+
+        if (PlayerService.SelectedPlayerId <= 0 || hydratedPlayerId == PlayerService.SelectedPlayerId)
+        {
+            return;
+        }
+
+        hydratedPlayerId = PlayerService.SelectedPlayerId;
+        await LoadResearchAsync();
+    }
+
+    private async void HandleResourceChanged()
+    {
+        await EnsureLoadedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void InitializeNodes()
+    {
+        nodes.Clear();
+        nodes.Add(new ResearchNodeViewModel
+        {
+            Key = "MiningEfficiency",
+            Tag = "Economy",
+            Title = "Mining Efficiency",
+            Description = "Boost every credit pulse from clicks, asteroid ore, and auto-drone income.",
+            EffectText = level => $"Current bonus: +{level * 15}% credit output"
+        });
+        nodes.Add(new ResearchNodeViewModel
+        {
+            Key = "LogisticsProtocols",
+            Tag = "Cargo",
+            Title = "Logistics Protocols",
+            Description = "Expand freighter routing and storage discipline so each asteroid run brings home more.",
+            EffectText = level => $"Current bonus: +{level * 20} cargo capacity"
+        });
+        nodes.Add(new ResearchNodeViewModel
+        {
+            Key = "ReactorTheory",
+            Tag = "Combat",
+            Title = "Reactor Theory",
+            Description = "Refine unstable plasma windows to trigger more critical bursts in the reactor core.",
+            EffectText = level => $"Current bonus: +{level * 2}% crit chance"
+        });
+    }
+
+    private async Task LoadResearchAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            statusMessage = "Choose a pilot before investing in research.";
+            return;
+        }
+
+        var research = await HttpClient.GetFromJsonAsync<List<PlayerResearch>>($"api/game/player/{PlayerService.SelectedPlayerId}/research") ?? new List<PlayerResearch>();
+        PlayerService.UpdateResearch(research);
+
+        foreach (var node in nodes)
+        {
+            node.Level = research.FirstOrDefault(item => item.ResearchType == node.Key)?.Level ?? 0;
+        }
+    }
+
+    private async Task BuyResearchAsync(string researchKey)
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var response = await HttpClient.PostAsync($"api/game/player/{PlayerService.SelectedPlayerId}/research/buy/{researchKey}", null);
+        if (!response.IsSuccessStatusCode)
+        {
+            statusMessage = await response.Content.ReadAsStringAsync();
+            return;
+        }
+
+        var research = await response.Content.ReadFromJsonAsync<List<PlayerResearch>>() ?? new List<PlayerResearch>();
+        PlayerService.UpdateResearch(research);
+
+        foreach (var node in nodes)
+        {
+            node.Level = research.FirstOrDefault(item => item.ResearchType == node.Key)?.Level ?? 0;
+        }
+
+        var updatedPlayer = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
+        if (updatedPlayer is not null)
+        {
+            PlayerService.UpdateFromPlayer(updatedPlayer);
+        }
+
+        var xpGain = 18 + nodes.First(node => node.Key == researchKey).Level * 4;
+        PlayerService.AddXP(xpGain);
+        var playerResponse = await HttpClient.PostAsJsonAsync("api/game/saveplayer", PlayerService.ToPlayer());
+        playerResponse.EnsureSuccessStatusCode();
+        await RefreshAccountProgressAsync();
+
+        statusMessage = $"Research upgraded and synced to your pilot state. +{xpGain} XP.";
+        Status.NotifyResourceChanged();
+    }
+
+    private async Task RefreshAccountProgressAsync()
+    {
+        if (PlayerService.AccountProfileId <= 0)
+        {
+            return;
+        }
+
+        var account = await HttpClient.GetFromJsonAsync<AccountProfile>($"api/game/account/{PlayerService.AccountProfileId}");
+        if (account is not null)
+        {
+            PlayerService.UpdateAccount(account);
+        }
+    }
+
+    private int GetXpThreshold() => Math.Max(100, PlayerService.CurrentLevel * 100);
+
+    private double GetXpPercent()
+    {
+        var threshold = GetXpThreshold();
+        return threshold <= 0 ? 0 : Math.Clamp(PlayerService.CurrentXP * 100d / threshold, 0, 100);
+    }
+
+    private sealed class ResearchNodeViewModel
+    {
+        public string Key { get; set; } = string.Empty;
+        public string Tag { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public int Level { get; set; }
+        public Func<int, string> EffectText { get; set; } = _ => string.Empty;
+
+        public int FuelCost => Key switch
+        {
+            "MiningEfficiency" => 25 * (Level + 1),
+            "LogisticsProtocols" => 40 * (Level + 1),
+            "ReactorTheory" => 55 * (Level + 1),
+            _ => 100 * (Level + 1)
+        };
+
+        public int BiomassCost => Key switch
+        {
+            "MiningEfficiency" => 10 * (Level + 1),
+            "LogisticsProtocols" => 14 * (Level + 1),
+            "ReactorTheory" => 18 * (Level + 1),
+            _ => 20 * (Level + 1)
+        };
+    }
+
+    public void Dispose()
+    {
+        Status.OnResourceChanged -= HandleResourceChanged;
+    }
+}

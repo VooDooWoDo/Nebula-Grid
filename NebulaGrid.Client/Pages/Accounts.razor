@@ -1,0 +1,493 @@
+@page "/accounts"
+@using System.Net.Http.Json
+@using NebulaGrid.Shared.Models
+@using NebulaGrid.Shared.Services
+@implements IDisposable
+@inject PlayerService PlayerService
+@inject NavigationManager NavManager
+@inject GameStatus Status
+@inject HttpClient HttpClient
+@inject IJSRuntime JSRuntime
+
+<div class="accounts-shell">
+    <section class="accounts-hero">
+        <div>
+            <p class="accounts-kicker">Start Screen</p>
+            <h1>Choose Your Local Profile</h1>
+            <p class="accounts-lede">Pick the account that should be active on this machine. Each account owns its own pilot roster, account level, and idle progression.</p>
+        </div>
+        <div class="accounts-current-panel">
+            <span>Current Account</span>
+            <strong>@(currentAccount?.AccountName ?? "None Selected")</strong>
+            <small>@(currentAccount is not null ? $"Account LVL {currentAccount.AccountLevel} • {currentAccount.AccountXP}/{currentAccount.AccountXPToNextLevel} Account XP" : "Select a profile to open its hangar.")</small>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <div class="accounts-error">@loadError</div>
+    }
+
+    <div class="accounts-grid">
+        @foreach (var account in accounts)
+        {
+            var isActive = account.AccountProfileID == PlayerService.AccountProfileId;
+            <article class="profile-card @(isActive ? "active" : string.Empty)">
+                <div class="profile-card-head">
+                    <span class="profile-badge">@(isActive ? "Active" : "Local Profile")</span>
+                    <span class="profile-level">LVL @account.AccountLevel</span>
+                </div>
+                <h2>@account.AccountName</h2>
+                <p>@account.AccountXP / @account.AccountXPToNextLevel XP</p>
+                <div class="profile-stats">
+                    <span>@account.CombinedPilotLevels pilot levels</span>
+                    <span>@account.UnlockedSlotCount / 3 slots online</span>
+                    <span>+@account.CreditBonusPercent% credits • +@account.FuelBonusFlat fuel/s</span>
+                </div>
+                <div class="profile-actions">
+                    <button type="button" class="profile-open-button" @onclick="() => SelectAccountAsync(account)">
+                        @(isActive ? "Open Pilot Hangar" : "Switch And Open Hangar")
+                    </button>
+                    <button type="button" class="profile-delete-button" @onclick="() => DeleteAccountAsync(account)">
+                        Delete Account
+                    </button>
+                </div>
+            </article>
+        }
+
+        <div class="profile-card create-card">
+            <div class="profile-card-head">
+                <span class="profile-badge">New Profile</span>
+            </div>
+            <h2>Create Account</h2>
+            <p>Start a fresh local progression track with its own pilots and idle gains.</p>
+            <input class="profile-input" placeholder="Account name" @bind="accountDraftName" maxlength="24" />
+            <button class="profile-create-button" @onclick="CreateAccountAsync">Create And Open</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private const string SelectedAccountStorageKey = "nebula.selected-account-id";
+    private const string SelectedPlayerStorageKey = "nebula.selected-player-id";
+    private readonly List<AccountProfile> accounts = new();
+    private AccountProfile? currentAccount;
+    private string accountDraftName = string.Empty;
+    private string? loadError;
+    private int restoreAttempts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Status.OnResourceChanged += HandleResourceChanged;
+        await LoadAccountsAsync();
+        await RestoreCurrentAccountAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (currentAccount is not null || restoreAttempts >= 3)
+        {
+            return;
+        }
+
+        restoreAttempts++;
+        await RestoreCurrentAccountAsync();
+
+        if (currentAccount is null && PlayerService.AccountProfileId > 0)
+        {
+            currentAccount = CreateCurrentAccountSnapshot();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAccountsAsync()
+    {
+        try
+        {
+            loadError = null;
+            var loadedAccounts = await HttpClient.GetFromJsonAsync<List<AccountProfile>>("api/game/accounts") ?? new List<AccountProfile>();
+            accounts.Clear();
+            accounts.AddRange(loadedAccounts.OrderBy(account => account.AccountName));
+        }
+        catch (Exception ex)
+        {
+            accounts.Clear();
+            loadError = $"Accounts could not be loaded: {ex.Message}";
+        }
+    }
+
+    private async Task SelectAccountAsync(AccountProfile account)
+    {
+        PlayerService.UpdateAccount(account);
+        currentAccount = account;
+        PlayerService.SelectedPlayerId = 0;
+        PlayerService.SyncActivePilotPresentation();
+        await JSRuntime.InvokeVoidAsync("nebulaStorage.set", SelectedAccountStorageKey, account.AccountProfileID.ToString());
+        await JSRuntime.InvokeVoidAsync("nebulaStorage.remove", SelectedPlayerStorageKey);
+        Status.NotifyResourceChanged();
+        NavManager.NavigateTo("/playerselection");
+    }
+
+    private async Task RestoreCurrentAccountAsync()
+    {
+        if (PlayerService.AccountProfileId > 0)
+        {
+            var currentAccount = accounts.FirstOrDefault(account => account.AccountProfileID == PlayerService.AccountProfileId);
+            if (currentAccount is not null)
+            {
+                PlayerService.UpdateAccount(currentAccount);
+                this.currentAccount = currentAccount;
+                return;
+            }
+
+            if (PlayerService.HasAccount)
+            {
+                currentAccount = CreateCurrentAccountSnapshot();
+                this.currentAccount = currentAccount;
+                return;
+            }
+        }
+
+        var storedAccountId = await JSRuntime.InvokeAsync<string?>("nebulaStorage.get", SelectedAccountStorageKey);
+        if (!int.TryParse(storedAccountId, out var accountId) || accountId <= 0)
+        {
+            return;
+        }
+
+        var storedAccount = await FindOrLoadAccountAsync(accountId);
+        if (storedAccount is not null)
+        {
+            PlayerService.UpdateAccount(storedAccount);
+            currentAccount = storedAccount;
+        }
+    }
+
+    private async Task<AccountProfile?> FindOrLoadAccountAsync(int accountId)
+    {
+        var storedAccount = accounts.FirstOrDefault(account => account.AccountProfileID == accountId);
+        if (storedAccount is not null)
+        {
+            return storedAccount;
+        }
+
+        var response = await HttpClient.GetAsync($"api/game/account/{accountId}");
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<AccountProfile>();
+    }
+
+    private AccountProfile CreateCurrentAccountSnapshot()
+    {
+        return new AccountProfile
+        {
+            AccountProfileID = PlayerService.AccountProfileId,
+            AccountName = PlayerService.AccountName,
+            AccountLevel = PlayerService.AccountLevel,
+            AccountXP = PlayerService.AccountXP,
+            AccountXPToNextLevel = PlayerService.AccountXPToNextLevel,
+            CombinedPilotLevels = PlayerService.CombinedPilotLevels,
+            CombinedCommanderLevels = PlayerService.CombinedCommanderLevels,
+            UnlockedSlotCount = PlayerService.AccountUnlockedSlotCount,
+            CreditBonusPercent = PlayerService.AccountCreditBonusPercent,
+            FuelBonusFlat = PlayerService.AccountFuelBonusFlat,
+            MilestoneTitle = PlayerService.AccountMilestoneTitle,
+            MilestoneProgressText = PlayerService.AccountMilestoneProgressText,
+            MilestoneProgressValue = PlayerService.AccountMilestoneProgressValue,
+            MilestoneTargetValue = PlayerService.AccountMilestoneTargetValue
+        };
+    }
+
+    private async void HandleResourceChanged()
+    {
+        if (PlayerService.AccountProfileId <= 0)
+        {
+            currentAccount = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var matchingAccount = accounts.FirstOrDefault(account => account.AccountProfileID == PlayerService.AccountProfileId);
+        if (matchingAccount is null)
+        {
+            await LoadAccountsAsync();
+            matchingAccount = accounts.FirstOrDefault(account => account.AccountProfileID == PlayerService.AccountProfileId);
+        }
+
+        currentAccount = matchingAccount;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CreateAccountAsync()
+    {
+        var response = await HttpClient.PostAsJsonAsync("api/game/accounts", new CreateAccountRequest
+        {
+            AccountName = accountDraftName
+        });
+
+        if (!response.IsSuccessStatusCode)
+        {
+            loadError = await response.Content.ReadAsStringAsync();
+            return;
+        }
+
+        var account = await response.Content.ReadFromJsonAsync<AccountProfile>();
+        if (account is null)
+        {
+            loadError = "Account response was empty.";
+            return;
+        }
+
+        accountDraftName = string.Empty;
+        await SelectAccountAsync(account);
+    }
+
+    private async Task DeleteAccountAsync(AccountProfile account)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Delete account '{account.AccountName}' permanently? This also deletes all pilots in this profile.");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        loadError = null;
+        var response = await HttpClient.DeleteAsync($"api/game/account/{account.AccountProfileID}");
+        if (!response.IsSuccessStatusCode)
+        {
+            loadError = await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(loadError))
+            {
+                loadError = "Account could not be deleted.";
+            }
+            return;
+        }
+
+        accounts.RemoveAll(existingAccount => existingAccount.AccountProfileID == account.AccountProfileID);
+
+        if (PlayerService.AccountProfileId == account.AccountProfileID)
+        {
+            currentAccount = null;
+            PlayerService.ClearAccountContext();
+            await JSRuntime.InvokeVoidAsync("nebulaStorage.remove", SelectedAccountStorageKey);
+            await JSRuntime.InvokeVoidAsync("nebulaStorage.remove", SelectedPlayerStorageKey);
+            Status.NotifyResourceChanged();
+        }
+        else if (currentAccount?.AccountProfileID == account.AccountProfileID)
+        {
+            currentAccount = null;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Status.OnResourceChanged -= HandleResourceChanged;
+    }
+}
+
+<style>
+    .accounts-shell {
+        min-height: calc(100vh - 120px);
+        padding: 32px;
+        color: #edf8ff;
+        background:
+            radial-gradient(circle at top left, rgba(92, 164, 255, 0.16), transparent 32%),
+            radial-gradient(circle at bottom right, rgba(241, 196, 106, 0.14), transparent 30%),
+            linear-gradient(180deg, #07111e 0%, #0a1422 44%, #091019 100%);
+    }
+
+    .accounts-hero {
+        max-width: 1200px;
+        margin: 0 auto 28px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 24px;
+        align-items: end;
+    }
+
+    .accounts-kicker {
+        margin: 0 0 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 0.76rem;
+        color: #8fdcff;
+    }
+
+    .accounts-hero h1 {
+        margin: 0;
+        font-size: clamp(2.4rem, 5vw, 4.4rem);
+        line-height: 0.95;
+    }
+
+    .accounts-lede {
+        max-width: 760px;
+        color: rgba(237, 248, 255, 0.72);
+        line-height: 1.6;
+    }
+
+    .accounts-current-panel {
+        padding: 18px 20px;
+        border-radius: 20px;
+        border: 1px solid rgba(143, 220, 255, 0.22);
+        background: rgba(7, 18, 30, 0.86);
+        box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+        display: grid;
+        gap: 8px;
+    }
+
+    .accounts-current-panel span,
+    .accounts-current-panel small {
+        color: rgba(237, 248, 255, 0.66);
+    }
+
+    .accounts-current-panel strong {
+        font-size: 1.3rem;
+        color: #f1c46a;
+    }
+
+    .accounts-error {
+        max-width: 1200px;
+        margin: 0 auto 18px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 128, 128, 0.28);
+        background: rgba(255, 128, 128, 0.1);
+        color: #ffd1d1;
+    }
+
+    .accounts-grid {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 18px;
+    }
+
+    .profile-card {
+        min-height: 320px;
+        padding: 20px;
+        border-radius: 24px;
+        border: 1px solid rgba(143, 220, 255, 0.18);
+        background: linear-gradient(180deg, rgba(8, 18, 30, 0.94), rgba(9, 14, 24, 0.98));
+        color: #eef9ff;
+        text-align: left;
+        display: grid;
+        align-content: start;
+        gap: 12px;
+        box-shadow: 0 20px 36px rgba(0, 0, 0, 0.24);
+        transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+    }
+
+    .profile-card:hover {
+        transform: translateY(-4px);
+        border-color: rgba(143, 220, 255, 0.36);
+        box-shadow: 0 24px 42px rgba(0, 0, 0, 0.32);
+    }
+
+    .profile-card.active {
+        border-color: rgba(241, 196, 106, 0.42);
+        box-shadow: 0 0 0 1px rgba(241, 196, 106, 0.14), 0 24px 42px rgba(0, 0, 0, 0.32);
+    }
+
+    .profile-actions {
+        display: grid;
+        gap: 10px;
+        margin-top: auto;
+    }
+
+    .profile-card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .profile-badge,
+    .profile-level {
+        padding: 4px 9px;
+        border-radius: 999px;
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .profile-badge {
+        background: rgba(143, 220, 255, 0.12);
+        color: #8fdcff;
+    }
+
+    .profile-level {
+        background: rgba(241, 196, 106, 0.14);
+        color: #f1c46a;
+    }
+
+    .profile-card h2 {
+        margin: 0;
+        font-size: 1.7rem;
+    }
+
+    .profile-card p,
+    .profile-stats span {
+        margin: 0;
+        color: rgba(237, 248, 255, 0.72);
+        line-height: 1.5;
+    }
+
+    .profile-stats {
+        display: grid;
+        gap: 6px;
+        margin-top: 4px;
+    }
+
+    .profile-open-button,
+    .profile-delete-button,
+    .profile-create-button {
+        border: none;
+        border-radius: 999px;
+        padding: 12px 16px;
+        font-weight: 800;
+    }
+
+    .profile-open-button {
+        background: linear-gradient(90deg, #f1c46a, #f08b52);
+        color: #151008;
+    }
+
+    .profile-delete-button {
+        border: 1px solid rgba(255, 128, 128, 0.28);
+        background: rgba(255, 128, 128, 0.1);
+        color: #ffd1d1;
+    }
+
+    .create-card {
+        border-style: dashed;
+    }
+
+    .profile-input {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(143, 220, 255, 0.24);
+        background: rgba(255,255,255,0.04);
+        color: #eef9ff;
+    }
+
+    .profile-create-button {
+        background: linear-gradient(90deg, #f1c46a, #f08b52);
+        color: #151008;
+    }
+
+    @@media (max-width: 760px) {
+        .accounts-shell {
+            padding: 20px;
+        }
+
+        .accounts-hero {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>

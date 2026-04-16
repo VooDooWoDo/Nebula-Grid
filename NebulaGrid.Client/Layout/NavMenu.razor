@@ -1,0 +1,119 @@
+﻿@using NebulaGrid.Shared.Services
+@inject PlayerService PlayerService
+@inject GameStatus Status
+@implements IDisposable
+
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">NebulaGrid.Client</a>
+        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </div>
+</div>
+
+<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+    <nav class="nav flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="galaxy">
+                <span class="bi bi-globe2" aria-hidden="true"></span> Galaxy Map
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="accounts">
+                <span class="bi bi-people-fill" aria-hidden="true"></span> Account Profiles
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="playerselection">
+                <span class="bi bi-person-badge-fill" aria-hidden="true"></span> Pilot Hangar
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="academy">
+                <span class="bi bi-mortarboard-fill" aria-hidden="true"></span> Pilot Academy
+            </NavLink>
+        </div>
+        @RenderAreaLink("town", "Frontier Hub", "bi bi-buildings-fill")
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="game1">
+                <span class="bi bi-terminal-fill" aria-hidden="true"></span> Command Nexus
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="game2">
+                <span class="bi bi-stars" aria-hidden="true"></span> Asteroid Belt
+            </NavLink>
+        </div>
+        @RenderAreaLink("game3", "Bio Dome", "bi bi-flower1")
+        @RenderAreaLink("game4", "Reactor Core", "bi bi-sun-fill")
+        @RenderAreaLink("research", "Research Lab", "bi bi-diagram-3-fill")
+        @RenderAreaLink("lootbox", "Stellar Cargo", "bi bi-box-seam-fill")
+        @RenderAreaLink("ships", "Hangar", "bi bi-rocket-takeoff-fill")
+    </nav>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    protected override void OnInitialized()
+    {
+        Status.OnResourceChanged += HandleStatusChanged;
+    }
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    private async void HandleStatusChanged()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private RenderFragment RenderAreaLink(string areaKey, string label, string iconClass) => builder =>
+    {
+        var unlocked = PlayerService.IsAreaUnlocked(areaKey);
+        var requiredLevel = PlayerService.GetRequiredLevelForArea(areaKey);
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "nav-item px-3");
+
+        if (unlocked)
+        {
+            builder.OpenComponent<NavLink>(2);
+            builder.AddAttribute(3, "class", "nav-link");
+            builder.AddAttribute(4, "href", areaKey);
+            builder.AddAttribute(5, "ChildContent", (RenderFragment)(contentBuilder =>
+            {
+                contentBuilder.OpenElement(6, "span");
+                contentBuilder.AddAttribute(7, "class", iconClass);
+                contentBuilder.AddAttribute(8, "aria-hidden", "true");
+                contentBuilder.CloseElement();
+                contentBuilder.AddContent(9, $" {label}");
+            }));
+            builder.CloseComponent();
+        }
+        else
+        {
+            builder.OpenElement(10, "div");
+            builder.AddAttribute(11, "class", "nav-link disabled opacity-50");
+            builder.AddAttribute(12, "title", $"Unlocks at Pilot Level {requiredLevel}");
+            builder.OpenElement(13, "span");
+            builder.AddAttribute(14, "class", iconClass);
+            builder.AddAttribute(15, "aria-hidden", "true");
+            builder.CloseElement();
+            builder.AddContent(16, $" {label} (LVL {requiredLevel})");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    public void Dispose()
+    {
+        Status.OnResourceChanged -= HandleStatusChanged;
+    }
+}

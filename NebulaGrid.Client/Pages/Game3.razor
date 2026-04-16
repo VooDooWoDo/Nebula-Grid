@@ -1,0 +1,327 @@
+@page "/game3"
+@using System.Net.Http.Json
+@using NebulaGrid.Shared.Models
+@using NebulaGrid.Shared.Services
+@inject PlayerService PlayerService
+@inject GameStatus Status
+@inject HttpClient HttpClient
+@implements IDisposable
+
+<PageTitle>Game 3 - Nebula Grid</PageTitle>
+
+@if (!PlayerService.IsAreaUnlocked("game3"))
+{
+    <div class="farm-container">
+        <h1>🌱 Bio-Dome Farming</h1>
+        <p style="color: #9ad7ff; margin-bottom: 16px;">Bio Dome is locked. @PlayerService.GetUnlockText("game3"). Current Pilot Level: @PlayerService.CurrentLevel.</p>
+    </div>
+}
+else
+{
+
+<style>
+    .farm-container { padding: 20px; color: white; text-align: center; font-family: 'Segoe UI', sans-serif; }
+    .farm-header {
+        max-width: 760px;
+        margin: 0 auto 22px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 260px;
+        gap: 18px;
+        align-items: start;
+    }
+    .farm-title-wrap {
+        text-align: left;
+    }
+    .progress-card {
+        padding: 16px 18px;
+        border-radius: 18px;
+        background: rgba(10, 22, 14, 0.82);
+        border: 1px solid rgba(146, 255, 198, 0.22);
+        box-shadow: 0 16px 28px rgba(0, 0, 0, 0.2);
+        text-align: left;
+    }
+    .progress-card span {
+        display: block;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.72rem;
+        color: rgba(255, 255, 255, 0.62);
+    }
+    .progress-card strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 1.15rem;
+        color: #92ffc6;
+    }
+    .progress-card small {
+        display: block;
+        margin-top: 8px;
+        color: rgba(255, 255, 255, 0.72);
+    }
+    .progress-track {
+        margin-top: 10px;
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.12);
+    }
+    .progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #4caf50, #92ffc6);
+        transition: width 0.2s ease;
+    }
+    .garden-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; max-width: 600px; margin: 0 auto; }
+    .plot-card { 
+        background: #2d5a27; 
+        border: 3px solid #1e3d1a; 
+        border-radius: 15px; 
+        padding: 20px; 
+        min-height: 150px;
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        justify-content: center;
+        transition: transform 0.2s;
+    }
+    .plot-card.empty { background: #5d4037; border-color: #3e2723; }
+    .plot-card:hover { transform: scale(1.02); }
+
+    .plant-icon { font-size: 3rem; margin-bottom: 10px; }
+    .btn-plant { background: #4caf50; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin: 2px; }
+    .btn-harvest { background: #ffeb3b; color: #333; font-weight: bold; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; animation: pulse 1.5s infinite; }
+    .reward-toast {
+        max-width: 600px;
+        margin: 0 auto 16px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(146, 255, 198, 0.16);
+        border: 1px solid rgba(146, 255, 198, 0.34);
+        color: #92ffc6;
+        font-weight: 700;
+        animation: rewardFade 1.4s ease-out forwards;
+    }
+
+    @@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+    @@keyframes rewardFade {
+        0% { opacity: 0; transform: translateY(8px); }
+        12% { opacity: 1; transform: translateY(0); }
+        100% { opacity: 0; transform: translateY(-10px); }
+    }
+
+    @@media (max-width: 720px) {
+        .farm-header {
+            grid-template-columns: 1fr;
+        }
+
+        .farm-title-wrap,
+        .progress-card {
+            text-align: center;
+        }
+    }
+</style>
+
+<div class="farm-container">
+    <div class="farm-header">
+        <div class="farm-title-wrap">
+            <h1>🌱 Bio-Dome Farming</h1>
+
+            @if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                <p style="color: #9ad7ff; margin-bottom: 0;">@statusMessage</p>
+            }
+        </div>
+
+        <div class="progress-card">
+            <span>Pilot Progress</span>
+            <strong>LVL @PlayerService.CurrentLevel</strong>
+            <small>Biomass reserves: @PlayerService.Biomass</small>
+            <small>@PlayerService.CurrentXP / @GetXpThreshold() XP</small>
+            <div class="progress-track">
+                <div class="progress-fill" style="width: @GetXpPercent().ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(rewardToast))
+    {
+        <div class="reward-toast">@rewardToast</div>
+    }
+
+    <div class="garden-grid">
+        @foreach (var plot in plots)
+        {
+            <div class="plot-card @(plot.IsPlanted ? "" : "empty")">
+                @if (!plot.IsPlanted)
+                {
+                    <span class="plant-icon">🟫</span>
+                    <div>
+                        <button class="btn-plant" @onclick='() => Plant(plot, "Weltraum-Weizen", 10, 50)'>Weizen (10s | 50 Biomass)</button>
+                        <button class="btn-plant" @onclick='() => Plant(plot, "Kristall-Blume", 30, 200)'>Kristall (30s | 200 Biomass)</button>
+                    </div>
+                }
+                else
+                {
+                    var remaining = plot.FinishTime - DateTime.UtcNow;
+                    @if (remaining.TotalSeconds <= 0)
+                    {
+                        <span class="plant-icon">✨</span>
+                        <button class="btn-harvest" @onclick="() => Harvest(plot)">ERNTEN (+@plot.ResourceYield)</button>
+                    }
+                    else
+                    {
+                        <span class="plant-icon">⏳</span>
+                        <p>@plot.PlantName</p>
+                        <p>Fertig in: @( (int)remaining.TotalSeconds )s</p>
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+}
+
+@code {
+    private List<FarmPlot> plots = new();
+    private System.Threading.Timer? refreshTimer;
+    private string? statusMessage;
+    private string? rewardToast;
+    private int hydratedPlayerId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Status.OnResourceChanged += HandleResourceChanged;
+        await EnsureLoadedAsync();
+        refreshTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, 0, 1000);
+    }
+
+    private async Task EnsureLoadedAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0 || hydratedPlayerId == PlayerService.SelectedPlayerId)
+        {
+            return;
+        }
+
+        hydratedPlayerId = PlayerService.SelectedPlayerId;
+        await LoadPlotsAsync();
+    }
+
+    private async void HandleResourceChanged()
+    {
+        await EnsureLoadedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadPlotsAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            statusMessage = "Select a pilot first.";
+            return;
+        }
+
+        try
+        {
+            plots = await HttpClient.GetFromJsonAsync<List<FarmPlot>>($"api/game/player/{PlayerService.SelectedPlayerId}/farmplots") ?? new List<FarmPlot>();
+            statusMessage = plots.Any(plot => plot.IsPlanted)
+                ? "Your planted crops were restored from the database."
+                : null;
+        }
+        catch (Exception ex)
+        {
+            plots = new List<FarmPlot>();
+            statusMessage = $"Farm data could not be loaded: {ex.Message}";
+        }
+    }
+
+    private async Task SavePlotsAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var plotResponse = await HttpClient.PostAsJsonAsync($"api/game/player/{PlayerService.SelectedPlayerId}/farmplots", plots);
+        plotResponse.EnsureSuccessStatusCode();
+
+        plots = await plotResponse.Content.ReadFromJsonAsync<List<FarmPlot>>() ?? plots;
+
+        var playerResponse = await HttpClient.PostAsJsonAsync("api/game/saveplayer", PlayerService.ToPlayer());
+        playerResponse.EnsureSuccessStatusCode();
+        await RefreshAccountProgressAsync();
+    }
+
+    private async Task RefreshAccountProgressAsync()
+    {
+        if (PlayerService.AccountProfileId <= 0)
+        {
+            return;
+        }
+
+        var account = await HttpClient.GetFromJsonAsync<AccountProfile>($"api/game/account/{PlayerService.AccountProfileId}");
+        if (account is not null)
+        {
+            PlayerService.UpdateAccount(account);
+        }
+    }
+
+    private async Task Plant(FarmPlot plot, string name, int seconds, int yield)
+    {
+        if (plot.IsPlanted || PlayerService.Resource1 < yield / 2) return;
+
+        PlayerService.Resource1 -= yield / 2;
+        plot.IsPlanted = true;
+        plot.PlantName = name;
+        plot.FinishTime = DateTime.UtcNow.AddSeconds(seconds);
+        plot.ResourceYield = yield;
+        await SavePlotsAsync();
+        statusMessage = $"{name} planted. Stored until {plot.FinishTime:HH:mm:ss} UTC.";
+        Status.NotifyResourceChanged();
+    }
+
+    private async Task Harvest(FarmPlot plot)
+    {
+        var harvestedResources = plot.ResourceYield;
+        var xpGain = Math.Max(6, harvestedResources / 10);
+        PlayerService.Biomass += harvestedResources;
+        PlayerService.AddXP(xpGain);
+        plot.IsPlanted = false;
+        plot.PlantName = string.Empty;
+        plot.ResourceYield = 0;
+        plot.FinishTime = DateTime.UtcNow;
+        await SavePlotsAsync();
+        statusMessage = $"Harvest saved to the database. +{xpGain} XP.";
+        ShowRewardToast($"Harvest complete: +{harvestedResources} Biomass • +{xpGain} XP");
+        Status.NotifyResourceChanged();
+    }
+
+    private int GetXpThreshold() => Math.Max(100, PlayerService.CurrentLevel * 100);
+
+    private double GetXpPercent()
+    {
+        var threshold = GetXpThreshold();
+        return threshold <= 0 ? 0 : Math.Clamp(PlayerService.CurrentXP * 100d / threshold, 0, 100);
+    }
+
+    private void ShowRewardToast(string text)
+    {
+        rewardToast = text;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(1400);
+            await InvokeAsync(() =>
+            {
+                rewardToast = null;
+                StateHasChanged();
+            });
+        });
+    }
+
+    public void Dispose()
+    {
+        Status.OnResourceChanged -= HandleResourceChanged;
+        refreshTimer?.Dispose();
+    }
+}

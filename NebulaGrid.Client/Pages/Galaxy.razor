@@ -1,0 +1,360 @@
+@page "/galaxy"
+@using NebulaGrid.Shared.Services
+@inject ShipService ShipService
+@inject NavigationManager NavManager
+@inject PlayerService PlayerService
+@inject GameStatus Status
+@implements IDisposable
+
+<div class="cockpit-container @(IsOnMapPage ? "full-screen" : "mini-bar")">
+@* 1. Die Piloten-Sperre (Immer aktiv, wenn kein Pilot da ist - AUSSER auf der Auswahlseite!) *@
+    @if (PlayerService.SelectedPlayerId <= 0 && !IsOnPlayerSelectionPage)
+    {
+        <div class="overlay-lock">
+            <div class="lock-content">
+                <h2>NO PILOT FOUND</h2>
+                <button class="nav-back-button" @onclick='() => NavManager.NavigateTo("/playerselection")'>
+                    TO PLAYER SELECTION
+                </button>
+            </div>
+        </div>
+    }
+
+    @* 2. Die Karte (Nur auf der Home-Seite) *@
+    @if (IsOnMapPage)
+    {
+        <div class="galaxy-map">
+            @if (PlayerService.HasAccount)
+            {
+                <div class="map-info-hover" title="@PlayerService.AccountMilestoneProgressText">
+                    <div class="map-info-chip">
+                        <span class="map-info-label">Account Goal</span>
+                        <strong>@PlayerService.AccountMilestoneTitle</strong>
+                        <span>@PlayerService.AccountMilestoneProgressValue / @PlayerService.AccountMilestoneTargetValue</span>
+                    </div>
+                    <div class="map-info-popover">
+                        <p class="map-info-kicker">@PlayerService.AccountProgressSummary</p>
+                        <strong>@PlayerService.AccountMilestoneTitle</strong>
+                        <p>@PlayerService.AccountMilestoneProgressText</p>
+                        <p>@PlayerService.AccountBonusSummary</p>
+                    </div>
+                </div>
+            }
+
+            @* Dein Schiff *@
+            <img src="/images/ships/ship.png" alt="Spaceship" class="nav-ship @(isTraveling ? "is-flying" : "") @(isFlipped ? "flip-horizontal" : "")"
+                 style="left: @(shipX)%; top: @(shipY)%; width: 100px; height: auto;" />
+            
+            @* Planeten-Klicks *@
+            <div class="planet-container theme-command @(GetPlanetStateClass("game1"))" style="left: 20%; top: 20%;" @onclick='() => TryTravelTo("game1", "/game1", 20, 20)'>
+                <div class="planet-icon">🪨</div><div class="planet-name">Command Nexus</div>
+                @if (!PlayerService.IsAreaUnlocked("game1"))
+                {
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("game1")</div>
+                }
+            </div>
+            <div class="planet-container theme-academy" style="left: 18%; top: 72%;" @onclick='() => TravelTo("/academy", 18, 72)'>
+                <div class="planet-icon">🎓</div><div class="planet-name">Pilot Academy</div>
+            </div>
+            <div class="planet-container theme-town @(GetPlanetStateClass("town"))" style="left: 54%; top: 74%;" @onclick='() => TryTravelTo("town", "/town", 54, 74)'>
+                <div class="planet-icon">🏙️</div><div class="planet-name">Frontier Hub</div>
+                @if (!PlayerService.IsAreaUnlocked("town"))
+                {
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("town")</div>
+                }
+            </div>
+            <div class="planet-container theme-asteroid @(GetPlanetStateClass("game2"))" style="left: 40%; top: 50%;" @onclick='() => TryTravelTo("game2", "/game2", 40, 50)'>
+                <div class="planet-icon">☄️</div><div class="planet-name">Asteroid Belt</div>
+                @if (!PlayerService.IsAreaUnlocked("game2"))
+                {
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("game2")</div>
+                }
+            </div>
+            <div class="planet-container theme-biodome @(GetPlanetStateClass("game3"))" style="left: 70%; top: 60%;" @onclick='() => TryTravelTo("game3", "/game3", 70, 60)'>
+                <div class="planet-icon">🌱</div><div class="planet-name">Bio Dome</div>
+                @if (!PlayerService.IsAreaUnlocked("game3"))
+                {
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("game3")</div>
+                }
+            </div>
+            <div class="planet-container theme-reactor @(GetPlanetStateClass("game4"))" style="left: 30%; top: 40%;" @onclick='() => TryTravelTo("game4", "/game4", 30, 40)'>
+                <div class="planet-icon">☀️</div><div class="planet-name">Reactor Core</div>
+                @if (!PlayerService.IsAreaUnlocked("game4"))
+                {
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("game4")</div>
+                }
+            </div>
+            <div class="planet-container theme-research @(GetPlanetStateClass("research"))" style="left: 58%; top: 24%;" @onclick='() => TryTravelTo("research", "/research", 58, 24)'>
+                <div class="planet-icon">🧪</div><div class="planet-name">Research Lab</div>
+                @if (!PlayerService.IsAreaUnlocked("research"))
+                {
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("research")</div>
+                }
+            </div>
+                 <div class="planet-container theme-cargo @(GetPlanetStateClass("lootbox"))" style="left: 70%; top: 30%;" @onclick='() => TryTravelTo("lootbox", "/lootbox", 70, 30)'>
+                <div class="planet-icon">📦</div><div class="planet-name">Stellar Cargo</div>
+                @if (!PlayerService.IsAreaUnlocked("lootbox"))
+                {
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("lootbox")</div>
+                }
+            </div>
+            <div class="planet-container theme-hangar @(GetPlanetStateClass("ships"))" style="left: 40%; top: 75%;" @onclick='() => TryTravelTo("ships", "/ships", 40, 75)'>
+                <div class="planet-icon">🛰️</div><div class="planet-name">Hangar</div>
+                @if (!PlayerService.IsAreaUnlocked("ships"))
+                {
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("ships")</div>
+                }
+            </div>
+        </div>
+
+        @if (showLandingDialog)
+        {
+            <div class="landing-overlay">
+                <div class="landing-card">
+                    <h3>PLANET REACHED</h3>
+                    <button class="confirm-btn" @onclick="ConfirmLanding">LAND</button>
+                    <button class="cancel-btn" @onclick="CancelLanding">CANCEL</button>
+                </div>
+            </div>
+        }
+    }
+    else 
+    {
+        @* Kleiner Button für die Rückkehr, falls man sich verirrt *@
+        <div class="back-to-map-btn" style="position: absolute; top: 20px; left: 20px; z-index: 3000;">
+            <button class="nav-back-button" @onclick='() => NavManager.NavigateTo("/")'> to map </button>
+        </div>
+    }
+</div>
+
+<style>
+    .mini-bar { height: 120px !important; pointer-events: none; }
+    .mini-bar .back-to-map-btn { pointer-events: all; }
+    .full-screen {
+        height: 100vh;
+        overflow: hidden;
+    }
+    .galaxy-map {
+        height: 100%;
+        overflow: hidden;
+        position: relative;
+        background:
+            radial-gradient(circle at 20% 20%, rgba(79, 129, 255, 0.14), transparent 18%),
+            radial-gradient(circle at 82% 18%, rgba(255, 156, 92, 0.14), transparent 16%),
+            radial-gradient(circle at 70% 72%, rgba(114, 255, 173, 0.12), transparent 20%),
+            linear-gradient(180deg, #070a14 0%, #0b1220 45%, #0a1018 100%);
+    }
+    .nav-ship {
+        position: absolute;
+        z-index: 20;
+        transition: left 1.5s ease-in-out, top 1.5s ease-in-out, transform 0.3s;
+        transform-origin: center;
+        translate: -50% -50%;
+    }
+    .map-info-hover {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        z-index: 35;
+    }
+    .map-info-chip {
+        display: grid;
+        gap: 4px;
+        min-width: 180px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(241, 196, 106, 0.28);
+        background: rgba(9, 15, 26, 0.9);
+        color: #f4f7fb;
+        box-shadow: 0 14px 28px rgba(0, 0, 0, 0.24);
+        backdrop-filter: blur(10px);
+    }
+    .map-info-label {
+        font-size: 0.68rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #f1c46a;
+    }
+    .map-info-chip span:last-child {
+        color: rgba(255,255,255,0.72);
+        font-size: 0.78rem;
+    }
+    .map-info-popover {
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        width: min(320px, 80vw);
+        padding: 14px 16px;
+        border-radius: 16px;
+        border: 1px solid rgba(143, 220, 255, 0.22);
+        background: rgba(7, 12, 22, 0.94);
+        color: #eef7ff;
+        box-shadow: 0 18px 36px rgba(0, 0, 0, 0.35);
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-6px);
+        transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+    .map-info-popover p {
+        margin: 8px 0 0;
+        color: rgba(255,255,255,0.76);
+        font-size: 0.84rem;
+        line-height: 1.45;
+    }
+    .map-info-kicker {
+        margin-top: 0 !important;
+        color: #f1c46a !important;
+        font-size: 0.75rem !important;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    .map-info-hover:hover .map-info-popover {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    .planet-container {
+        position: absolute;
+        translate: -50% -50%;
+        min-width: 136px;
+        padding: 14px 16px;
+        border-radius: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(8, 14, 24, 0.86);
+        box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+        cursor: pointer;
+        backdrop-filter: blur(12px);
+        transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+        z-index: 10;
+    }
+    .planet-container:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 18px 36px rgba(0, 0, 0, 0.35);
+    }
+    .planet-container::before {
+        content: "";
+        position: absolute;
+        inset: -10px;
+        border-radius: 28px;
+        z-index: -1;
+        opacity: 0.8;
+        filter: blur(18px);
+    }
+    .planet-icon {
+        font-size: 1.6rem;
+        margin-bottom: 6px;
+    }
+    .planet-name {
+        font-size: 0.88rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #f5f7ff;
+    }
+    .planet-container.locked {
+        opacity: 0.5;
+        filter: saturate(0.6);
+    }
+    .theme-command { border-color: rgba(133, 171, 255, 0.4); }
+    .theme-command::before { background: radial-gradient(circle, rgba(109, 147, 255, 0.34), transparent 70%); }
+    .theme-command .planet-name { color: #b6caff; }
+    .theme-academy { border-color: rgba(246, 191, 104, 0.38); }
+    .theme-academy::before { background: radial-gradient(circle, rgba(246, 191, 104, 0.3), transparent 70%); }
+    .theme-academy .planet-name { color: #ffd790; }
+    .theme-town { border-color: rgba(255, 153, 92, 0.42); }
+    .theme-town::before { background: radial-gradient(circle, rgba(255, 153, 92, 0.32), transparent 70%); }
+    .theme-town .planet-name { color: #ffb283; }
+    .theme-asteroid { border-color: rgba(168, 190, 214, 0.34); }
+    .theme-asteroid::before { background: radial-gradient(circle, rgba(168, 190, 214, 0.26), transparent 70%); }
+    .theme-asteroid .planet-name { color: #d9e7f2; }
+    .theme-biodome { border-color: rgba(111, 224, 146, 0.36); }
+    .theme-biodome::before { background: radial-gradient(circle, rgba(111, 224, 146, 0.28), transparent 70%); }
+    .theme-biodome .planet-name { color: #9bf0b4; }
+    .theme-reactor { border-color: rgba(255, 125, 94, 0.42); }
+    .theme-reactor::before { background: radial-gradient(circle, rgba(255, 125, 94, 0.3), transparent 70%); }
+    .theme-reactor .planet-name { color: #ffb29f; }
+    .theme-research { border-color: rgba(121, 240, 255, 0.42); }
+    .theme-research::before { background: radial-gradient(circle, rgba(121, 240, 255, 0.28), transparent 70%); }
+    .theme-research .planet-name { color: #9ff6ff; }
+    .theme-cargo { border-color: rgba(206, 140, 255, 0.4); }
+    .theme-cargo::before { background: radial-gradient(circle, rgba(206, 140, 255, 0.28), transparent 70%); }
+    .theme-cargo .planet-name { color: #ddb0ff; }
+    .theme-hangar { border-color: rgba(126, 203, 255, 0.4); }
+    .theme-hangar::before { background: radial-gradient(circle, rgba(126, 203, 255, 0.28), transparent 70%); }
+    .theme-hangar .planet-name { color: #addfff; }
+    .planet-lock {
+        margin-top: 4px;
+        font-size: 0.72rem;
+        color: #ffd36a;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    @@media (max-width: 820px) {
+        .map-info-hover {
+            top: 14px;
+            right: 14px;
+        }
+
+        .map-info-chip {
+            min-width: 154px;
+        }
+
+        .planet-container {
+            min-width: 112px;
+            padding: 10px 12px;
+        }
+
+        .planet-name {
+            font-size: 0.74rem;
+        }
+    }
+</style>
+
+@code {
+    private bool IsOnMapPage => NavManager.Uri.EndsWith("/") || NavManager.Uri.EndsWith("galaxy");
+    
+    // NEU: Erkennt, ob wir gerade auf der Auswahlseite sind
+    private bool IsOnPlayerSelectionPage => NavManager.Uri.Contains("playerselection", StringComparison.OrdinalIgnoreCase) || NavManager.Uri.Contains("accounts", StringComparison.OrdinalIgnoreCase);
+
+    private int shipX = 50, shipY = 50;
+    private bool isFlipped = false, isTraveling = false, showLandingDialog = false;
+    private string? pendingTarget;
+
+    protected override void OnInitialized() {
+        NavManager.LocationChanged += (s, e) => StateHasChanged();
+        Status.OnResourceChanged += HandleUpdate;
+    }
+    private async void HandleUpdate() => await InvokeAsync(StateHasChanged);
+    public void Dispose() => Status.OnResourceChanged -= HandleUpdate;
+
+    private async Task TravelTo(string t, int x, int y) {
+        if (isTraveling) return;
+        isTraveling = true; isFlipped = x < shipX;
+        shipX = x; shipY = y;
+        await Task.Delay(1600);
+        isTraveling = false; pendingTarget = t; showLandingDialog = true;
+    }
+
+    private async Task TryTravelTo(string areaKey, string target, int x, int y)
+    {
+        if (!PlayerService.IsAreaUnlocked(areaKey))
+        {
+            return;
+        }
+
+        await TravelTo(target, x, y);
+    }
+
+    private string GetPlanetStateClass(string areaKey) => PlayerService.IsAreaUnlocked(areaKey) ? string.Empty : "locked";
+
+    private void ConfirmLanding()
+    {
+        if (!string.IsNullOrEmpty(pendingTarget))
+        {
+            NavManager.NavigateTo(pendingTarget);
+        }
+        showLandingDialog = false;
+    }
+
+    private void CancelLanding() => showLandingDialog = false;
+}

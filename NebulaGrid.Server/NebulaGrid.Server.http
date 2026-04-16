@@ -1,0 +1,6 @@
+@NebulaGrid.Server_HostAddress = http://localhost:5237
+
+GET {{NebulaGrid.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

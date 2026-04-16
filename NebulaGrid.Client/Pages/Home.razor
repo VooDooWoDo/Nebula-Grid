@@ -1,0 +1,192 @@
+﻿@page "/"
+@using NebulaGrid.Shared.Models
+@implements IDisposable
+@inject HttpClient Http
+
+<PageTitle>Nebula Grid</PageTitle>
+
+<h1>Nebula Grid</h1>
+<p class="lead">Idle mining game with server-backed SQLite save.</p>
+
+<div class="mb-3">
+    <a href="/galaxy" class="btn btn-info">Zur Galaxy-Map</a>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h2>@GameState.Currency.ToString("N0") Credits</h2>
+        <p>Income: @GameState.IncomePerSecond /sec • Click power: @GameState.ClickPower</p>
+        <button class="btn btn-primary me-2" @onclick="Mine">Mine +@GameState.ClickPower</button>
+        <button class="btn btn-success me-2" @onclick="BuyIncomeUpgrade" disabled="@(!CanBuyIncomeUpgrade)">Upgrade income (@IncomeUpgradeCost Credits)</button>
+        <button class="btn btn-secondary" @onclick="BuyClickUpgrade" disabled="@(!CanBuyClickUpgrade)">Upgrade click (@ClickUpgradeCost Credits)</button>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-sm-6">
+        <button class="btn btn-outline-primary me-2" @onclick="SaveStateAsync" disabled="@IsSaving">Save</button>
+        <button class="btn btn-outline-danger" @onclick="ResetStateAsync" disabled="@IsSaving">Reset</button>
+    </div>
+    <div class="col-sm-6 text-sm-end">
+        <div>Status: @Status</div>
+        <div>Last saved: @GameState.LastSaved.ToLocalTime():g</div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <div class="border rounded p-3">
+            <h5>Progress</h5>
+            <p>Total clicks: @GameState.TotalClicks</p>
+            <p>Auto level: @GameState.UpgradeLevel</p>
+            <p>Click upgrades: @GameState.ClickUpgradeLevel</p>
+        </div>
+    </div>
+    <div class="col-md-8 mb-3">
+        <div class="border rounded p-3">
+            <h5>How it works</h5>
+            <ul>
+                <li>Every second you gain <strong>@GameState.IncomePerSecond</strong> credits.</li>
+                <li>Click Mine to earn <strong>@GameState.ClickPower</strong> credits instantly.</li>
+                <li>Save stores your progress in SQLite on the server.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+@code {
+    private IdleGameState GameState { get; set; } = new();
+    private string Status { get; set; } = "Loading saved game...";
+    private bool IsSaving;
+    private CancellationTokenSource? _timerCancellation;
+
+    private int IncomeUpgradeCost => 15 + GameState.UpgradeLevel * 12;
+    private int ClickUpgradeCost => 10 + GameState.ClickUpgradeLevel * 10;
+    private bool CanBuyIncomeUpgrade => GameState.Currency >= IncomeUpgradeCost;
+    private bool CanBuyClickUpgrade => GameState.Currency >= ClickUpgradeCost;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStateAsync();
+        StartTickLoop();
+    }
+
+    private void StartTickLoop()
+    {
+        _timerCancellation?.Cancel();
+        _timerCancellation = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            while (!_timerCancellation.Token.IsCancellationRequested)
+            {
+                await Task.Delay(1000, _timerCancellation.Token);
+                GameState.Currency += GameState.IncomePerSecond;
+                await InvokeAsync(StateHasChanged);
+            }
+        }, _timerCancellation.Token);
+    }
+
+    private async Task LoadStateAsync()
+    {
+        try
+        {
+            var state = await Http.GetFromJsonAsync<IdleGameState>("api/game");
+            if (state is not null)
+            {
+                GameState = state;
+                Status = "Loaded saved game.";
+            }
+            else
+            {
+                Status = "Started a fresh game.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Unable to load save: {ex.Message}";
+        }
+    }
+
+    private void Mine()
+    {
+        GameState.Currency += GameState.ClickPower;
+        GameState.TotalClicks++;
+    }
+
+    private void BuyIncomeUpgrade()
+    {
+        if (!CanBuyIncomeUpgrade)
+        {
+            return;
+        }
+
+        GameState.Currency -= IncomeUpgradeCost;
+        GameState.UpgradeLevel++;
+        GameState.IncomePerSecond += 1 + GameState.UpgradeLevel / 2;
+    }
+
+    private void BuyClickUpgrade()
+    {
+        if (!CanBuyClickUpgrade)
+        {
+            return;
+        }
+
+        GameState.Currency -= ClickUpgradeCost;
+        GameState.ClickUpgradeLevel++;
+        GameState.ClickPower += 1 + GameState.ClickUpgradeLevel / 2;
+    }
+
+    private async Task SaveStateAsync()
+    {
+        IsSaving = true;
+        Status = "Saving...";
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/game", GameState);
+            response.EnsureSuccessStatusCode();
+            var saved = await response.Content.ReadFromJsonAsync<IdleGameState>();
+            if (saved is not null)
+            {
+                GameState = saved;
+                Status = "Save completed.";
+            }
+            else
+            {
+                Status = "Save completed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task ResetStateAsync()
+    {
+        var response = await Http.PostAsync("api/game/reset", null);
+        if (response.IsSuccessStatusCode)
+        {
+            var state = await response.Content.ReadFromJsonAsync<IdleGameState>();
+            if (state is not null)
+            {
+                GameState = state;
+                Status = "Game reset to default.";
+            }
+        }
+        else
+        {
+            Status = "Reset failed.";
+        }
+    }
+
+    public void Dispose()
+    {
+        _timerCancellation?.Cancel();
+    }
+}

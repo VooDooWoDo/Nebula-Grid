@@ -1,0 +1,465 @@
+@page "/game4"
+@using System.Net.Http.Json
+@using NebulaGrid.Shared.Models
+@using NebulaGrid.Shared.Services
+@using Microsoft.AspNetCore.Components.Web
+@inject PlayerService PlayerService
+@inject GameStatus Status
+@inject NavigationManager NavManager
+@inject HttpClient HttpClient
+@implements IDisposable
+
+<PageTitle>Game 4 - Nebula Grid</PageTitle>
+
+@if (!PlayerService.IsAreaUnlocked("game4"))
+{
+    <div class="orion-viewport">
+        <div class="click-feedback">
+            <h2 class="reward-text">Reactor Core locked</h2>
+            <p class="sub-text">@PlayerService.GetUnlockText("game4"). Current Pilot Level: @PlayerService.CurrentLevel.</p>
+        </div>
+    </div>
+}
+else
+{
+
+<div class="orion-viewport">
+    <div class="hud-top">
+        <div class="info-badge">SEKTOR: ORION-NEBEL</div>
+        <div class="multiplier-badge">KLICK-KRAFT: @GetClickPower()</div>
+        <div class="multiplier-badge">REAKTOR-FORSCHUNG: +@PlayerService.BonusCritChance% Krit</div>
+    </div>
+
+    <div class="click-area">
+        <div class="orion-sun @(isClicking ? "pulse" : "")" @onclick="HandleClick">
+            <div class="sun-core"></div>
+            @foreach (var pop in popups)
+            {
+                <span class="floating-text" style="left:@(pop.X)px; top:@(pop.Y)px">
+                    +@pop.Value @(pop.IsCrit ? "⭐" : "")
+                </span>
+            }
+        </div>
+    </div>
+
+    <div class="click-feedback">
+        <h2 class="reward-text">@message</h2>
+        <p class="sub-text">Extrahiere Plasma-Energie durch Interaktion</p>
+    </div>
+    <div class="upgrade-list">
+        @foreach (var upgrade in activeUpgrades)
+        {
+            <div class="upgrade-card">
+                <div class="upgrade-info">
+                    <span class="upgrade-name">@upgrade.Type</span>
+                    <span class="upgrade-lvl">LVL @upgrade.Level</span>
+                </div>
+                <button class="btn-buy"
+                        @onclick="() => BuyUpgrade(upgrade)"
+                        disabled="@(PlayerService.Resource1 < upgrade.Cost)">
+                    Kaufen (@upgrade.Cost R1)
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+}
+
+<style>
+    .orion-viewport {
+        height: 85vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at center, #0a0a20 0%, #050510 100%);
+        overflow: hidden;
+        position: relative;
+    }
+
+    .hud-top {
+        position: absolute;
+        top: 20px;
+        display: flex;
+        gap: 20px;
+    }
+
+    .info-badge, .multiplier-badge {
+        background: rgba(0, 212, 255, 0.1);
+        border: 1px solid #00d4ff;
+        padding: 5px 15px;
+        border-radius: 4px;
+        color: #00d4ff;
+        font-family: 'Consolas', monospace;
+        font-size: 0.8rem;
+    }
+
+    .click-area {
+        position: relative;
+        z-index: 10;
+    }
+
+    .orion-sun {
+        width: 180px;
+        height: 180px;
+        background: #cc5500;
+        border-radius: 50%;
+        box-shadow: 0 0 20px rgba(255, 69, 0, 0.4);
+        cursor: pointer;
+        position: relative;
+        transition: transform 0.1s;
+    }
+
+    .sun-core {
+        position: absolute;
+        top: 15%; left: 15%; right: 15%; bottom: 15%;
+        background: radial-gradient(circle, #884400, #441100);
+        border-radius: 50%;
+        filter: blur(2px);
+    }
+
+    .pulse {
+        animation: sun-hit 0.15s ease-out;
+    }
+
+    @@keyframes sun-hit {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); background: #ee7722; }
+        100% { transform: scale(1); }
+    }
+
+    .click-feedback {
+        margin-top: 40px;
+        text-align: center;
+    }
+
+    .reward-text {
+        color: #ffd700;
+        font-weight: bold;
+        text-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+        min-height: 1.5em;
+    }
+
+    .sub-text {
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .upgrade-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 20px;
+        width: 300px;
+    }
+
+    .upgrade-card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        padding: 10px;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .upgrade-name {
+        display: block;
+        color: #00d4ff;
+        font-weight: bold;
+        font-size: 0.9rem;
+    }
+
+    .upgrade-lvl {
+        color: #888;
+        font-size: 0.8rem;
+    }
+
+    .btn-buy {
+        background: #00d4ff;
+        color: #050510;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+
+    .btn-buy:disabled {
+        background: #333;
+        color: #666;
+    }
+
+    .floating-text {
+        position: absolute;
+        color: #ffd700;
+        font-weight: bold;
+        pointer-events: none;
+        animation: floatUp 0.8s ease-out forwards;
+        z-index: 100;
+    }
+
+    @@keyframes floatUp {
+        0% { transform: translateY(0); opacity: 1; }
+        100% { transform: translateY(-100px); opacity: 0; }
+    }
+</style>
+
+@code {
+    private int r1
+    {
+        get => PlayerService.Resource1;
+        set => PlayerService.Resource1 = value;
+    }
+
+    private string message = "System ready";
+    private bool isClicking = false;
+    private int totalClicks = 0;
+    private List<ClickPopup> popups = new();
+    private List<UpgradeInfo> activeUpgrades = new();
+
+    private int clickUpgrade => activeUpgrades.FirstOrDefault(u => u.Type == "ClickPower")?.Level ?? 1;
+    private int upgradeCost => clickUpgrade * 150;
+    private int hydratedPlayerId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Status.OnResourceChanged += HandleResourceChanged;
+        await EnsureLoadedAsync();
+    }
+
+    private async Task EnsureLoadedAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0 || hydratedPlayerId == PlayerService.SelectedPlayerId)
+        {
+            return;
+        }
+
+        hydratedPlayerId = PlayerService.SelectedPlayerId;
+        await LoadPlayerStateAsync();
+        await LoadResearchAsync();
+        await LoadUpgradesAsync();
+        await LoadStatsAsync();
+    }
+
+    private async void HandleResourceChanged()
+    {
+        await EnsureLoadedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadPlayerStateAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var player = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
+        if (player is not null)
+        {
+            PlayerService.UpdateFromPlayer(player);
+        }
+    }
+
+    private void InitializeUpgrades()
+    {
+        activeUpgrades.Clear();
+        activeUpgrades.Add(new UpgradeInfo { Type = "ClickPower", Level = 1 });
+        activeUpgrades.Add(new UpgradeInfo { Type = "Crit-Chance", Level = PlayerService.CritChanceLevel });
+        activeUpgrades.Add(new UpgradeInfo { Type = "Auto-Klicker", Level = PlayerService.AutoKlickerLevel });
+    }
+
+    private async Task LoadResearchAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var research = await HttpClient.GetFromJsonAsync<List<PlayerResearch>>($"api/game/player/{PlayerService.SelectedPlayerId}/research") ?? new List<PlayerResearch>();
+        PlayerService.UpdateResearch(research);
+    }
+
+    private async Task LoadUpgradesAsync()
+    {
+        InitializeUpgrades();
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var upgrades = await HttpClient.GetFromJsonAsync<List<PlayerUpgrade>>($"api/game/player/{PlayerService.SelectedPlayerId}/upgrades") ?? new List<PlayerUpgrade>();
+        foreach (var upgrade in upgrades)
+        {
+            var localUpgrade = activeUpgrades.FirstOrDefault(x => x.Type == upgrade.UpgradeType);
+            if (localUpgrade is not null)
+            {
+                localUpgrade.Level = upgrade.Level;
+            }
+        }
+
+        PlayerService.ClickPowerLevel = activeUpgrades.First(x => x.Type == "ClickPower").Level;
+        PlayerService.AutoKlickerLevel = activeUpgrades.First(x => x.Type == "Auto-Klicker").Level;
+        PlayerService.CritChanceLevel = activeUpgrades.First(x => x.Type == "Crit-Chance").Level;
+    }
+
+    private async Task SavePlayerAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var response = await HttpClient.PostAsJsonAsync("api/game/saveplayer", PlayerService.ToPlayer());
+        response.EnsureSuccessStatusCode();
+        await RefreshAccountProgressAsync();
+    }
+
+    private async Task RefreshAccountProgressAsync()
+    {
+        if (PlayerService.AccountProfileId <= 0)
+        {
+            return;
+        }
+
+        var account = await HttpClient.GetFromJsonAsync<AccountProfile>($"api/game/account/{PlayerService.AccountProfileId}");
+        if (account is not null)
+        {
+            PlayerService.UpdateAccount(account);
+        }
+    }
+
+    private async Task SaveUpgradesAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var upgrades = activeUpgrades.Select(upgrade => new PlayerUpgrade
+        {
+            PlayerID = PlayerService.SelectedPlayerId,
+            UpgradeType = upgrade.Type,
+            Level = upgrade.Level
+        }).ToList();
+
+        await HttpClient.PostAsJsonAsync($"api/game/player/{PlayerService.SelectedPlayerId}/upgrades", upgrades);
+    }
+
+    private async Task LoadStatsAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var stats = await HttpClient.GetFromJsonAsync<PlayerStats>($"api/game/player/{PlayerService.SelectedPlayerId}/stats");
+        totalClicks = stats?.TotalClicks ?? 0;
+    }
+
+    private async Task SaveStatsAsync(int resourceGain)
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var currentStats = await HttpClient.GetFromJsonAsync<PlayerStats>($"api/game/player/{PlayerService.SelectedPlayerId}/stats")
+            ?? new PlayerStats { PlayerID = PlayerService.SelectedPlayerId };
+
+        currentStats.TotalClicks = totalClicks;
+        currentStats.TotalResourcesEarned += resourceGain;
+
+        await HttpClient.PostAsJsonAsync($"api/game/player/{PlayerService.SelectedPlayerId}/stats", currentStats);
+    }
+
+    private async Task HandleClick(MouseEventArgs e)
+    {
+        if (isClicking) return;
+        isClicking = true;
+
+        try
+        {
+            int power = GetClickPower();
+            int critLvl = activeUpgrades.FirstOrDefault(u => u.Type == "Crit-Chance")?.Level ?? 0;
+            bool isCrit = new Random().Next(1, 101) <= ((critLvl * 2) + PlayerService.BonusCritChance);
+
+            if (isCrit) power *= PlayerService.ReactorCritMultiplier;
+            r1 += power;
+            totalClicks++;
+            PlayerService.AddXP(2);
+
+            var newPop = new ClickPopup { Value = power, X = e.OffsetX, Y = e.OffsetY, IsCrit = isCrit };
+            popups.Add(newPop);
+            StateHasChanged();
+
+            await SavePlayerAsync();
+            await SaveStatsAsync(power);
+            Status.NotifyResourceChanged();
+            _ = RemovePopupAfterDelay(newPop, 800);
+        }
+        catch (Exception ex)
+        {
+            message = "Error: " + ex.Message;
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            await Task.Delay(100);
+            isClicking = false;
+        }
+    }
+
+    private async Task RemovePopupAfterDelay(ClickPopup popup, int delay)
+    {
+        await Task.Delay(delay);
+        popups.Remove(popup);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task BuyUpgrade(UpgradeInfo upgrade)
+    {
+        if (r1 < upgrade.Cost) return;
+
+        r1 -= upgrade.Cost;
+        upgrade.Level++;
+
+        if (upgrade.Type == "Auto-Klicker") PlayerService.AutoKlickerLevel = upgrade.Level;
+        if (upgrade.Type == "ClickPower") PlayerService.ClickPowerLevel = upgrade.Level;
+        if (upgrade.Type == "Crit-Chance") PlayerService.CritChanceLevel = upgrade.Level;
+
+        await SavePlayerAsync();
+        await SaveUpgradesAsync();
+        Status.NotifyResourceChanged();
+        message = $"{upgrade.Type} Level {upgrade.Level}!";
+    }
+
+    private int GetClickPower() => PlayerService.GetModifiedCreditGain((PlayerService.CurrentLevel / 5) + clickUpgrade);
+
+    public class UpgradeInfo
+    {
+        public string Type { get; set; } = string.Empty;
+        public int Level { get; set; }
+        public int Cost => Type switch
+        {
+            "Auto-Klicker" => (Level + 1) * 500,
+            "Crit-Chance" => (Level + 1) * 300,
+            _ => (Level + 1) * 150,
+        };
+    }
+
+    public class ClickPopup
+    {
+        public int Value { get; set; }
+        public double X { get; set; }
+        public double Y { get; set; }
+        public bool IsCrit { get; set; }
+    }
+
+    public void Dispose()
+    {
+        Status.OnResourceChanged -= HandleResourceChanged;
+    }
+}

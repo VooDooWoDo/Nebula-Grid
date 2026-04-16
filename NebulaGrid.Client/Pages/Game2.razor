@@ -1,0 +1,520 @@
+@page "/game2"
+@using Microsoft.AspNetCore.Components.Web
+@using System.Net.Http.Json
+@using NebulaGrid.Shared.Models
+@using NebulaGrid.Shared.Services
+@inject PlayerService PlayerService
+@inject GameStatus Status
+@inject HttpClient HttpClient
+
+<PageTitle>Game 2 - Nebula Grid</PageTitle>
+
+<style>
+    .game-container { user-select: none; color: white; }
+    .game-area {
+        width: 100%;
+        height: 600px;
+        background-color: #050510;
+        background-image:
+            radial-gradient(white, rgba(255,255,255,.2) 2px, transparent 40px),
+            radial-gradient(white, rgba(255,255,255,.1) 1px, transparent 30px);
+        background-size: 200px 200px, 350px 350px;
+        position: relative;
+        overflow: hidden;
+        cursor: crosshair;
+        border: 1px solid #333;
+    }
+    .player {
+        width: 60px;
+        height: 60px;
+        position: absolute;
+        transition: left var(--ship-speed) ease-out, top var(--ship-speed) ease-out;
+        font-size: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 10;
+    }
+    .asteroid {
+        position: absolute;
+        font-size: 35px;
+        cursor: pointer;
+        z-index: 5;
+        transition: transform 0.2s;
+    }
+    .station {
+        position: absolute;
+        width: 104px;
+        height: 104px;
+        border-radius: 50%;
+        border: 2px solid rgba(86, 239, 255, 0.8);
+        background:
+            radial-gradient(circle at 50% 50%, rgba(132, 247, 255, 0.5), rgba(12, 22, 46, 0.92) 58%),
+            conic-gradient(from 180deg, rgba(86, 239, 255, 0.18), rgba(255, 214, 102, 0.18), rgba(86, 239, 255, 0.18));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 30px rgba(0, 212, 255, 0.4), inset 0 0 18px rgba(255, 255, 255, 0.12);
+        cursor: pointer;
+        z-index: 6;
+    }
+    .station::before {
+        content: "";
+        position: absolute;
+        inset: -10px;
+        border-radius: 50%;
+        border: 1px dashed rgba(132, 247, 255, 0.55);
+        animation: stationRing 4s linear infinite;
+        pointer-events: none;
+    }
+    .station::after {
+        content: "";
+        position: absolute;
+        inset: -4px;
+        border-radius: 50%;
+        border: 2px solid rgba(132, 247, 255, 0.35);
+        animation: stationPulse 2.2s ease-in-out infinite;
+        pointer-events: none;
+    }
+    .station-icon {
+        font-size: 2.4rem;
+        filter: drop-shadow(0 0 10px rgba(132, 247, 255, 0.75));
+    }
+    .station-label {
+        position: absolute;
+        bottom: -26px;
+        width: 140px;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+        font-size: 0.8rem;
+        color: #d8fbff;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        text-shadow: 0 0 12px rgba(86, 239, 255, 0.75);
+    }
+    .hud-panel {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        min-width: 280px;
+        padding: 14px;
+        border: 1px solid rgba(0, 212, 255, 0.45);
+        border-radius: 12px;
+        background: rgba(5, 10, 28, 0.9);
+        backdrop-filter: blur(6px);
+        z-index: 20;
+    }
+    .floating-loot {
+        position: absolute;
+        z-index: 25;
+        font-weight: 800;
+        text-shadow: 0 0 14px rgba(0, 0, 0, 0.4);
+        animation: driftLoot 1s ease-out forwards;
+        pointer-events: none;
+    }
+
+    @@keyframes driftLoot {
+        0% { opacity: 0; transform: translate(-50%, 8px) scale(0.92); }
+        12% { opacity: 1; }
+        100% { opacity: 0; transform: translate(-50%, -42px) scale(1.05); }
+    }
+    .hud-line {
+        margin-top: 8px;
+        color: #9ad7ff;
+        font-size: 0.95rem;
+    }
+    .resource-select {
+        background: #000428;
+        color: #00d4ff;
+        border: 1px solid #00d4ff;
+        padding: 5px;
+        border-radius: 5px;
+    }
+    @@keyframes stationPulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.04); }
+    }
+    @@keyframes stationRing {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+<div class="game-container">
+    <div class="game-area" @onclick="HandleBackgroundClick">
+        <div class="player" style="left: @(posX)px; top: @(posY)px; --ship-speed: @(flightSpeed.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))s;">
+            @shipIcon
+        </div>
+
+           <div class="station"
+               style="left: @(UnloadStationX)px; top: @(UnloadStationY)px; opacity: @((game2State.PendingResource1 > 0 || game2State.PendingResource2 > 0 || game2State.PendingResource3 > 0) ? "1" : "0.55");"
+             title="Cargo Dock"
+             @onclick:stopPropagation="true"
+             @onclick="UnloadCargoAsync">
+            <span class="station-icon">📥</span>
+            <span class="station-label">Cargo Dock</span>
+        </div>
+
+        <div class="hud-panel" @onclick:stopPropagation="true">
+            <div style="color: #aaa;">
+                Ship: <strong>@(equippedShip?.ModelName ?? "Starter Rocket")</strong>
+                • Engine: @(equippedShip?.EngineLevel ?? 1)
+                • Travel: @flightSpeed.ToString("0.00")s
+            </div>
+
+            <div class="hud-line">
+                Cargo: @game2State.CargoUsed / @game2State.CargoCapacity
+                • Research Bonus: +@PlayerService.BonusCargoCapacity cargo
+            </div>
+
+            <div class="hud-line">
+                Stored Ore: @game2State.StoredOre • Stored Fuel: @game2State.StoredFuel
+            </div>
+
+            <div class="hud-line">
+                Unload Value: @game2State.PendingResource1 credits • @game2State.PendingResource3 alloy • @game2State.PendingResource2 fuel
+            </div>
+
+            <div style="margin-top: 12px;">
+                <button class="resource-select" @onclick="UnloadCargoAsync" @onclick:stopPropagation="true" disabled="@(game2State.PendingResource1 == 0 && game2State.PendingResource2 == 0 && game2State.PendingResource3 == 0)">
+                    Fly to dock and unload
+                </button>
+            </div>
+        </div>
+
+        @foreach (var ast in asteroids)
+        {
+            <div class="asteroid"
+                 style="left: @(ast.X)px; top: @(ast.Y)px; opacity: @(ast.IsTarget ? "0.3" : "1");"
+                 @onclick:stopPropagation="true"
+                 @onclick="() => StartHarvest(ast)">
+                @(selectedType == "R2" ? "💎" : "☄️")
+            </div>
+        }
+
+        @foreach (var lootText in floatingLootTexts)
+        {
+            <div class="floating-loot" style="left:@(lootText.X)px; top:@(lootText.Y)px; color:@lootText.Color">@lootText.Text</div>
+        }
+    </div>
+
+    <div style="padding: 10px; text-align: center;">
+        <select class="resource-select" @bind="selectedType">
+            <option value="R1">Mine resource 1</option>
+            <option value="R2">Mine resource 2</option>
+        </select>
+
+        @if (!string.IsNullOrWhiteSpace(statusMessage))
+        {
+            <div style="margin-top: 10px; color: #9ad7ff;">@statusMessage</div>
+        }
+    </div>
+</div>
+
+@code {
+    private const int OreCargoPerRun = 10;
+    private const int FuelCargoPerRun = 5;
+    private const int BaseOreCreditValue = 25;
+    private const int BaseOreAlloyValue = 3;
+    private const int BaseFuelValue = 5;
+    private const double UnloadStationX = 72;
+    private const double UnloadStationY = 472;
+    private string selectedType = "R1";
+    private double posX = 100, posY = 100, flightSpeed = 0.8;
+    private bool isMoving;
+    private string shipIcon = "🚀";
+    private readonly List<Asteroid> asteroids = new();
+    private readonly List<FloatingLootText> floatingLootTexts = new();
+    private readonly Random rnd = new();
+    private Game2State game2State = new();
+    private List<Ship> ships = new();
+    private Ship? equippedShip;
+    private string? statusMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGame2State();
+        await LoadShipStateAsync();
+        ApplyShipState();
+        SpawnAsteroids();
+    }
+
+    private async Task LoadShipStateAsync()
+    {
+        if (PlayerService.SelectedPlayerId > 0)
+        {
+            var player = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
+            if (player is not null)
+            {
+                PlayerService.UpdateFromPlayer(player);
+            }
+        }
+
+        ships = await HttpClient.GetFromJsonAsync<List<Ship>>("api/game/ships") ?? new List<Ship>();
+        equippedShip = ships.FirstOrDefault(ship => ship.ShipID == PlayerService.CurrentShipId) ?? ships.FirstOrDefault();
+    }
+
+    private void ApplyShipState()
+    {
+        var engineLevel = equippedShip?.EngineLevel ?? 1;
+        game2State.CargoCapacity = (equippedShip?.CargoCapacity ?? 50) + PlayerService.BonusCargoCapacity;
+        MigrateLegacyCargoState();
+        SyncCargoUsed();
+        if (game2State.CargoUsed > game2State.CargoCapacity)
+        {
+            game2State.CargoUsed = game2State.CargoCapacity;
+        }
+
+        flightSpeed = equippedShip?.TravelDurationSeconds ?? Math.Max(0.28, 1.55 - (engineLevel * 0.4) + ((equippedShip?.CargoCapacity ?? 50) * 0.003));
+        shipIcon = PlayerService.CurrentShipId switch
+        {
+            2 => "🛸",
+            3 => "🛰️",
+            _ => "🚀",
+        };
+    }
+
+    private async Task LoadGame2State()
+    {
+        try
+        {
+            game2State = await HttpClient.GetFromJsonAsync<Game2State>("api/game/game2state") ?? new Game2State();
+        }
+        catch
+        {
+            game2State = new Game2State();
+        }
+    }
+
+    private async Task SaveGame2State()
+    {
+        try
+        {
+            game2State.LastSaved = DateTime.UtcNow;
+            await HttpClient.PostAsJsonAsync("api/game/savegame2state", game2State);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving game2 state: {ex.Message}");
+        }
+    }
+
+    private async Task StartHarvest(Asteroid ast)
+    {
+        if (isMoving) return;
+
+        var cargoCost = selectedType == "R1" ? OreCargoPerRun : FuelCargoPerRun;
+        if (game2State.CargoUsed + cargoCost > game2State.CargoCapacity)
+        {
+            statusMessage = "Cargo hold full. Unload your ship first.";
+            return;
+        }
+
+        isMoving = true;
+        ast.IsTarget = true;
+        await MoveShipToAsync(ast.X - 15, ast.Y - 15);
+
+        var xpGain = selectedType == "R1" ? 10 : 12;
+
+        if (selectedType == "R1")
+        {
+            game2State.StoredOre += OreCargoPerRun;
+            game2State.PendingResource1 += GetOreCreditValue();
+            game2State.PendingResource3 += GetOreAlloyValue();
+            AddFloatingLoot($"+{OreCargoPerRun} Ore", GetShipLootX(), GetShipLootY(-12), "#f1c46a");
+        }
+        else
+        {
+            game2State.StoredFuel += FuelCargoPerRun;
+            game2State.PendingResource2 += BaseFuelValue;
+            AddFloatingLoot($"+{FuelCargoPerRun} Fuel", GetShipLootX(), GetShipLootY(-12), "#8fdcff");
+        }
+
+        SyncCargoUsed();
+
+        PlayerService.AddXP(xpGain);
+        AddFloatingLoot($"+{xpGain} XP", GetShipLootX(), GetShipLootY(18), "#92ffc6");
+
+        game2State.TotalClicks++;
+        await SaveGame2State();
+        await SavePlayerAsync();
+
+        Status.NotifyResourceChanged();
+        statusMessage = $"Asteroid secured. Cargo transferred to ship hold. +{xpGain} XP.";
+        asteroids.Remove(ast);
+        isMoving = false;
+        asteroids.Add(new Asteroid { Id = Guid.NewGuid(), X = rnd.Next(50, 800), Y = rnd.Next(50, 500) });
+    }
+
+    private async Task SavePlayerAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var response = await HttpClient.PostAsJsonAsync("api/game/saveplayer", PlayerService.ToPlayer());
+        response.EnsureSuccessStatusCode();
+        await RefreshAccountProgressAsync();
+    }
+
+    private async Task UnloadCargoAsync()
+    {
+        if (isMoving)
+        {
+            return;
+        }
+
+        if (game2State.PendingResource1 == 0 && game2State.PendingResource2 == 0 && game2State.PendingResource3 == 0)
+        {
+            statusMessage = "Cargo hold is already empty.";
+            return;
+        }
+
+        isMoving = true;
+        statusMessage = "Docking at cargo station...";
+        await MoveShipToAsync(UnloadStationX + 12, UnloadStationY + 12);
+
+        PlayerService.Resource1 += game2State.PendingResource1;
+        PlayerService.Resource2 += game2State.PendingResource2;
+        PlayerService.Alloy += game2State.PendingResource3;
+        var unloadXp = Math.Max(6, (game2State.StoredOre / 5) + game2State.StoredFuel);
+        PlayerService.AddXP(unloadXp);
+        AddFloatingLoot($"+{game2State.PendingResource1} Credits", GetShipLootX(), GetShipLootY(-18), "#f1c46a");
+        if (game2State.PendingResource3 > 0)
+        {
+            AddFloatingLoot($"+{game2State.PendingResource3} Alloy", GetShipLootX(), GetShipLootY(8), "#92ffc6");
+        }
+        if (game2State.PendingResource2 > 0)
+        {
+            AddFloatingLoot($"+{game2State.PendingResource2} Fuel", GetShipLootX(), GetShipLootY(30), "#8fdcff");
+        }
+        AddFloatingLoot($"+{unloadXp} XP", GetShipLootX(), GetShipLootY(52), "#d2a6ff");
+
+        game2State.StoredOre = 0;
+        game2State.StoredFuel = 0;
+        game2State.PendingResource1 = 0;
+        game2State.PendingResource2 = 0;
+        game2State.PendingResource3 = 0;
+        SyncCargoUsed();
+
+        await SaveGame2State();
+        await SavePlayerAsync();
+        Status.NotifyResourceChanged();
+        statusMessage = $"Cargo unloaded into your main reserves. +{unloadXp} XP.";
+        isMoving = false;
+    }
+
+    private void HandleBackgroundClick(MouseEventArgs e)
+    {
+        if (isMoving) return;
+
+        posX = e.OffsetX - 30;
+        posY = e.OffsetY - 30;
+    }
+
+    private void SpawnAsteroids()
+    {
+        asteroids.Clear();
+        for (var i = 0; i < 5; i++)
+        {
+            asteroids.Add(new Asteroid { Id = Guid.NewGuid(), X = rnd.Next(50, 800), Y = rnd.Next(50, 500) });
+        }
+    }
+
+    private async Task MoveShipToAsync(double targetX, double targetY)
+    {
+        posX = targetX;
+        posY = targetY;
+        await Task.Delay((int)Math.Ceiling(flightSpeed * 1000));
+    }
+
+    private int GetOreCreditValue() => PlayerService.GetModifiedCreditGain(BaseOreCreditValue);
+
+    private int GetOreAlloyValue() => BaseOreAlloyValue + Math.Max(0, PlayerService.MiningResearchLevel / 2);
+
+    private double GetShipLootX() => posX + 30;
+
+    private double GetShipLootY(double offset = 0) => posY + offset;
+
+    private async Task RefreshAccountProgressAsync()
+    {
+        if (PlayerService.AccountProfileId <= 0)
+        {
+            return;
+        }
+
+        var account = await HttpClient.GetFromJsonAsync<AccountProfile>($"api/game/account/{PlayerService.AccountProfileId}");
+        if (account is not null)
+        {
+            PlayerService.UpdateAccount(account);
+        }
+    }
+
+    private void SyncCargoUsed()
+    {
+        game2State.CargoUsed = game2State.StoredOre + game2State.StoredFuel;
+    }
+
+    private void MigrateLegacyCargoState()
+    {
+        if (game2State.StoredOre == 0 && game2State.PendingResource1 > 0)
+        {
+            var oreTrips = Math.Max(1, (int)Math.Round((double)game2State.PendingResource1 / GetOreCreditValue(), MidpointRounding.AwayFromZero));
+            game2State.StoredOre = oreTrips * OreCargoPerRun;
+        }
+
+        if (game2State.StoredOre > 0 && game2State.PendingResource3 == 0)
+        {
+            var oreTrips = Math.Max(1, game2State.StoredOre / OreCargoPerRun);
+            game2State.PendingResource3 = oreTrips * GetOreAlloyValue();
+        }
+
+        if (game2State.StoredFuel == 0 && game2State.PendingResource2 > 0)
+        {
+            game2State.StoredFuel = game2State.PendingResource2;
+        }
+    }
+
+    public class Asteroid
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public int X { get; set; }
+        public int Y { get; set; }
+        public bool IsTarget { get; set; }
+    }
+
+    private void AddFloatingLoot(string text, double x, double y, string color)
+    {
+        var entry = new FloatingLootText
+        {
+            Id = Guid.NewGuid(),
+            Text = text,
+            X = x,
+            Y = y,
+            Color = color
+        };
+
+        floatingLootTexts.Add(entry);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(1000);
+            await InvokeAsync(() =>
+            {
+                floatingLootTexts.RemoveAll(item => item.Id == entry.Id);
+                StateHasChanged();
+            });
+        });
+    }
+
+    private sealed class FloatingLootText
+    {
+        public Guid Id { get; set; }
+        public string Text { get; set; } = string.Empty;
+        public double X { get; set; }
+        public double Y { get; set; }
+        public string Color { get; set; } = "#f1c46a";
+    }
+}

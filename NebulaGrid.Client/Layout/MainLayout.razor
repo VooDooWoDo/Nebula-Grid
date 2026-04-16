@@ -1,0 +1,329 @@
+﻿@inherits LayoutComponentBase
+@using System.Net.Http.Json
+@using NebulaGrid.Shared.Models
+@using NebulaGrid.Shared.Services
+@using System.Reflection
+@implements IDisposable
+@inject PlayerService PlayerService
+@inject GameStatus Status
+@inject NavigationManager NavManager
+@inject HttpClient HttpClient
+@inject IJSRuntime JSRuntime
+
+<div class="page @(isSidebarVisible ? string.Empty : "sidebar-hidden")">
+    @if (isSidebarVisible)
+    {
+        <div class="sidebar">
+            <NavMenu />
+        </div>
+    }
+
+    <main>
+        <div class="top-row px-4">
+            <div class="top-row-left">
+                <button class="layout-toggle" @onclick="ToggleSidebarAsync">@SidebarToggleText</button>
+                @if (ShouldShowGalaxyShortcut)
+                {
+                    <button class="layout-toggle galaxy-shortcut" @onclick="NavigateToGalaxy">Back to Galaxy</button>
+                }
+                <span class="app-version">Nebula Grid v@(AppVersion)</span>
+            </div>
+
+            <div class="top-row-center">
+                @if (PlayerService.SelectedPlayerId > 0)
+                {
+                    <div class="resource-cluster">
+                        <button class="resource-chip commander-chip commander-button" title="@PlayerService.CommanderSummary" @onclick='() => NavManager.NavigateTo("/playerselection")'>
+                            @PlayerService.PlayerName
+                        </button>
+                        <span class="resource-chip">Account: @PlayerService.AccountName</span>
+                        <span class="resource-chip account-chip">Account LVL: @PlayerService.AccountLevel</span>
+                        <span class="resource-chip">Pilot: @PlayerService.PlayerName</span>
+                        <span class="resource-chip">Class: @PlayerService.CommanderSummary</span>
+                        <span class="resource-chip">Pilot LVL: @PlayerService.CurrentLevel</span>
+                        <span class="resource-chip">Credits: @PlayerService.Resource1</span>
+                        <span class="resource-chip">Fuel: @PlayerService.Resource2</span>
+                        <span class="resource-chip">Alloy: @PlayerService.Alloy</span>
+                        <span class="resource-chip">Biomass: @PlayerService.Biomass</span>
+                        <span class="resource-chip rate-chip">+@PlayerService.CreditsPerSecond Credits/s</span>
+                        <span class="resource-chip rate-chip">+@PlayerService.FuelPerSecond Fuel/s</span>
+                        <span class="resource-chip account-bonus-chip">+@PlayerService.AccountCreditBonusPercent% account credits</span>
+                        <span class="resource-chip">XP: @PlayerService.CurrentXP</span>
+                    </div>
+                }
+            </div>
+
+            <div class="top-row-right">
+                <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+            </div>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    private const string SelectedAccountStorageKey = "nebula.selected-account-id";
+    private const string SelectedPlayerStorageKey = "nebula.selected-player-id";
+    private const string SidebarVisibleStorageKey = "nebula.sidebar-visible";
+    private System.Threading.Timer? automationTimer;
+    private bool isApplyingAutomation;
+    private bool isSessionReady;
+    private bool isSidebarVisible = true;
+    private int unsavedAutomationTicks;
+
+    private string SidebarToggleText => isSidebarVisible ? "Hide Nav" : "Show Nav";
+    private bool ShouldShowGalaxyShortcut => !isSidebarVisible && PlayerService.SelectedPlayerId > 0 && !IsCurrentRoute("galaxy");
+
+    private string AppVersion => typeof(Program).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+        .InformationalVersion ?? "1.0.0-alpha";
+
+    protected override void OnInitialized()
+    {
+        Status.OnResourceChanged += HandleResourceChanged;
+        NavManager.LocationChanged += HandleLocationChanged;
+        automationTimer = new System.Threading.Timer(_ => InvokeAsync(ApplyAutomationTickAsync), null, 1000, 1000);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        isSessionReady = true;
+        await RestoreLayoutPreferencesAsync();
+        await RestorePlayerContextAsync();
+    }
+
+    private async Task RestoreLayoutPreferencesAsync()
+    {
+        try
+        {
+            var storedSidebarVisible = await JSRuntime.InvokeAsync<string?>("nebulaStorage.get", SidebarVisibleStorageKey);
+            if (bool.TryParse(storedSidebarVisible, out var visible))
+            {
+                isSidebarVisible = visible;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Layout preference restore failed: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleSidebarAsync()
+    {
+        isSidebarVisible = !isSidebarVisible;
+        await JSRuntime.InvokeVoidAsync("nebulaStorage.set", SidebarVisibleStorageKey, isSidebarVisible.ToString().ToLowerInvariant());
+    }
+
+    private async void HandleResourceChanged()
+    {
+        if (isSessionReady)
+        {
+            await PersistSelectedAccountAsync();
+            await PersistSelectedPlayerAsync();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ApplyAutomationTickAsync()
+    {
+        if (isApplyingAutomation || PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        isApplyingAutomation = true;
+
+        try
+        {
+            var changed = PlayerService.ApplyPassiveIncome();
+            if (!changed)
+            {
+                return;
+            }
+
+            unsavedAutomationTicks++;
+            Status.NotifyResourceChanged();
+
+            if (unsavedAutomationTicks >= 5)
+            {
+                await SavePlayerProgressAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Automation tick failed: {ex.Message}");
+        }
+        finally
+        {
+            isApplyingAutomation = false;
+        }
+    }
+
+    private async void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        await FlushPendingProgressAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void NavigateToGalaxy()
+    {
+        NavManager.NavigateTo("/galaxy");
+    }
+
+    private bool IsCurrentRoute(string route)
+    {
+        var relativePath = NavManager.ToBaseRelativePath(NavManager.Uri).Trim('/');
+        return string.Equals(relativePath, route.Trim('/'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task FlushPendingProgressAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0 || unsavedAutomationTicks <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await SavePlayerProgressAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Progress flush failed: {ex.Message}");
+        }
+    }
+
+    private async Task SavePlayerProgressAsync()
+    {
+        var response = await HttpClient.PostAsJsonAsync("api/game/saveplayer", PlayerService.ToPlayer());
+        response.EnsureSuccessStatusCode();
+        await RefreshAccountProgressAsync();
+        unsavedAutomationTicks = 0;
+    }
+
+    private async Task RefreshAccountProgressAsync()
+    {
+        if (PlayerService.AccountProfileId <= 0)
+        {
+            return;
+        }
+
+        var account = await HttpClient.GetFromJsonAsync<AccountProfile>($"api/game/account/{PlayerService.AccountProfileId}");
+        if (account is not null)
+        {
+            PlayerService.UpdateAccount(account);
+        }
+    }
+
+    private async Task RestorePlayerContextAsync()
+    {
+        try
+        {
+            var storedAccountId = await JSRuntime.InvokeAsync<string?>("nebulaStorage.get", SelectedAccountStorageKey);
+            if (!int.TryParse(storedAccountId, out var accountId) || accountId <= 0)
+            {
+                PlayerService.ClearAccountContext();
+                await ClearSelectedPlayerAsync();
+                return;
+            }
+
+            var accountResponse = await HttpClient.GetAsync($"api/game/account/{accountId}");
+            if (accountResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                PlayerService.ClearAccountContext();
+                await ClearSelectedAccountAsync();
+                await ClearSelectedPlayerAsync();
+                return;
+            }
+
+            accountResponse.EnsureSuccessStatusCode();
+            var account = await accountResponse.Content.ReadFromJsonAsync<AccountProfile>();
+            if (account is null)
+            {
+                PlayerService.ClearAccountContext();
+                await ClearSelectedAccountAsync();
+                await ClearSelectedPlayerAsync();
+                return;
+            }
+
+            PlayerService.UpdateAccount(account);
+
+            if (PlayerService.SelectedPlayerId > 0)
+            {
+                await PersistSelectedPlayerAsync();
+                return;
+            }
+
+            var storedPlayerId = await JSRuntime.InvokeAsync<string?>("nebulaStorage.get", SelectedPlayerStorageKey);
+            if (!int.TryParse(storedPlayerId, out var playerId) || playerId <= 0)
+            {
+                return;
+            }
+
+            var player = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{playerId}");
+            if (player is null || player.AccountProfileID != accountId)
+            {
+                await ClearSelectedPlayerAsync();
+                return;
+            }
+
+            var upgrades = await HttpClient.GetFromJsonAsync<List<PlayerUpgrade>>($"api/game/player/{playerId}/upgrades") ?? new List<PlayerUpgrade>();
+            var research = await HttpClient.GetFromJsonAsync<List<PlayerResearch>>($"api/game/player/{playerId}/research") ?? new List<PlayerResearch>();
+            var townBuildings = await HttpClient.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{playerId}/town") ?? new List<PlayerTownBuilding>();
+
+            PlayerService.UpdateFromPlayer(player);
+            PlayerService.SyncActivePilotPresentation();
+            PlayerService.UpdateUpgrades(upgrades);
+            PlayerService.UpdateResearch(research);
+            PlayerService.UpdateTownBuildings(townBuildings);
+            Status.NotifyResourceChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Player context restore failed: {ex.Message}");
+            PlayerService.ClearAccountContext();
+            await ClearSelectedPlayerAsync();
+        }
+    }
+
+    private Task PersistSelectedAccountAsync()
+    {
+        return PlayerService.AccountProfileId > 0
+            ? JSRuntime.InvokeVoidAsync("nebulaStorage.set", SelectedAccountStorageKey, PlayerService.AccountProfileId.ToString()).AsTask()
+            : ClearSelectedAccountAsync();
+    }
+
+    private Task PersistSelectedPlayerAsync()
+    {
+        return PlayerService.SelectedPlayerId > 0
+            ? JSRuntime.InvokeVoidAsync("nebulaStorage.set", SelectedPlayerStorageKey, PlayerService.SelectedPlayerId.ToString()).AsTask()
+            : ClearSelectedPlayerAsync();
+    }
+
+    private Task ClearSelectedAccountAsync()
+    {
+        return JSRuntime.InvokeVoidAsync("nebulaStorage.remove", SelectedAccountStorageKey).AsTask();
+    }
+
+    private Task ClearSelectedPlayerAsync()
+    {
+        return JSRuntime.InvokeVoidAsync("nebulaStorage.remove", SelectedPlayerStorageKey).AsTask();
+    }
+
+    public void Dispose()
+    {
+        Status.OnResourceChanged -= HandleResourceChanged;
+        NavManager.LocationChanged -= HandleLocationChanged;
+        automationTimer?.Dispose();
+    }
+
+}

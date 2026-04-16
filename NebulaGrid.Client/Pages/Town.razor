@@ -1,0 +1,550 @@
+@page "/town"
+@using System.Net.Http.Json
+@using NebulaGrid.Shared.Models
+@using NebulaGrid.Shared.Services
+@inject HttpClient HttpClient
+@inject PlayerService PlayerService
+@inject GameStatus Status
+@implements IDisposable
+
+<PageTitle>Frontier Hub - Nebula Grid</PageTitle>
+
+@if (!PlayerService.IsAreaUnlocked("town"))
+{
+    <div class="town-shell">
+        <div class="town-lock-card">
+            <h2>Frontier Hub locked</h2>
+            <p>@PlayerService.GetUnlockText("town"). Current Pilot Level: @PlayerService.CurrentLevel.</p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="town-shell">
+        <section class="town-header">
+            <div>
+                <p class="town-eyebrow">Frontier Hub</p>
+                <h1>Build the city behind your idle roster</h1>
+                <p class="town-lede">Each district unlocks or amplifies reserve pilot jobs. Survey Office boosts passive credits, Freight Depot enables convoy fuel runs, and Reactor Annex turns idle drill time into XP.</p>
+            </div>
+            <div class="town-side-panels">
+                <div class="town-bank">
+                    <span>Credits</span>
+                    <strong>@PlayerService.Resource1</strong>
+                    <span>Fuel</span>
+                    <strong>@PlayerService.Resource2</strong>
+                    <span>Alloy</span>
+                    <strong>@PlayerService.Alloy</strong>
+                    <span>Biomass</span>
+                    <strong>@PlayerService.Biomass</strong>
+                </div>
+                <div class="town-xp-panel">
+                    <span>Pilot Progress</span>
+                    <strong>LVL @PlayerService.CurrentLevel</strong>
+                    <small>@PlayerService.CurrentXP / @GetXpThreshold() XP</small>
+                    <div class="town-xp-track">
+                        <div class="town-xp-fill" style="width: @GetXpPercent().ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        @if (!string.IsNullOrWhiteSpace(statusMessage))
+        {
+            <div class="town-status">@statusMessage</div>
+        }
+
+        <div class="town-grid">
+            @foreach (var building in buildings)
+            {
+                var nextLevel = building.Level + 1;
+                var upgradeRequirement = PlayerService.GetTownUpgradeRequirementText(building.Key, nextLevel);
+                var isMaxed = building.Level >= 5;
+                var missingResources = PlayerService.Resource1 < building.CreditCost || PlayerService.Alloy < building.AlloyCost;
+                var canUpgrade = !isMaxed && PlayerService.CanUpgradeTownBuilding(building.Key, nextLevel) && !missingResources;
+                <article class="town-card @(building.Level > 0 ? "online" : "offline")">
+                    <div class="town-card-head">
+                        <div>
+                            <span class="town-tag">@building.Tag</span>
+                            <h2>@building.Title</h2>
+                            <p>@building.Description</p>
+                        </div>
+                        <div class="town-level">LVL @building.Level</div>
+                    </div>
+
+                    <div class="town-effects">
+                        <span>@building.UnlockText(building.Level)</span>
+                        <span>@building.BonusText(building.Level)</span>
+                    </div>
+
+                    <div class="town-chain">
+                        <strong>Chain</strong>
+                        <span>@GetBuildingChainText(building.Key, nextLevel)</span>
+                    </div>
+
+                    <div class="town-requirement @(canUpgrade ? "ready" : "locked")">
+                        @if (isMaxed)
+                        {
+                            <span>District fully established.</span>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(upgradeRequirement))
+                        {
+                            <span>@upgradeRequirement</span>
+                        }
+                        else if (missingResources)
+                        {
+                            <span>Need @building.CreditCost Credits and @building.AlloyCost Alloy for the next district tier.</span>
+                        }
+                        else
+                        {
+                            <span>Ready to upgrade to LVL @nextLevel.</span>
+                        }
+                    </div>
+
+                    <button class="town-upgrade"
+                            title="@(isMaxed ? "This district is already maxed." : upgradeRequirement ?? string.Empty)"
+                            disabled="@(!canUpgrade)"
+                            @onclick="() => UpgradeBuildingAsync(building.Key)">
+                        @(isMaxed ? "Maxed" : $"Upgrade ({building.CreditCost} Credits / {building.AlloyCost} Alloy)")
+                    </button>
+                </article>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private readonly List<TownBuildingViewModel> buildings = new();
+    private string? statusMessage;
+    private int hydratedPlayerId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Status.OnResourceChanged += HandleResourceChanged;
+        InitializeBuildings();
+        await EnsureLoadedAsync();
+    }
+
+    private async Task EnsureLoadedAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0 || hydratedPlayerId == PlayerService.SelectedPlayerId)
+        {
+            return;
+        }
+
+        hydratedPlayerId = PlayerService.SelectedPlayerId;
+        await LoadTownAsync();
+    }
+
+    private void InitializeBuildings()
+    {
+        if (buildings.Count > 0)
+        {
+            return;
+        }
+
+        buildings.Add(new TownBuildingViewModel
+        {
+            Key = "survey-office",
+            Tag = "Economy",
+            Title = "Survey Office",
+            Description = "Keeps reserve prospectors charting profitable asteroid lanes between active sessions.",
+            UnlockText = level => level > 0 ? "Survey Sweep unlocked" : "Unlocks Survey Sweep",
+            BonusText = level => $"+{level * 3} passive credit rate and +{level} reserve drill XP"
+        });
+        buildings.Add(new TownBuildingViewModel
+        {
+            Key = "freight-depot",
+            Tag = "Logistics",
+            Title = "Freight Depot",
+            Description = "Dispatches quartermasters on side-routes that return with organized fuel convoys.",
+            UnlockText = level => level > 0 ? "Freight Convoy unlocked" : "Unlocks Freight Convoy",
+            BonusText = level => $"+{level} fuel per convoy cycle and +{level} logistics drill XP"
+        });
+        buildings.Add(new TownBuildingViewModel
+        {
+            Key = "reactor-annex",
+            Tag = "Training",
+            Title = "Reactor Annex",
+            Description = "Lets reserve vanguards run controlled plasma drills that feed player and reserve pilot XP.",
+            UnlockText = level => level > 0 ? "Reactor Drill unlocked" : "Unlocks Reactor Drill",
+            BonusText = level => $"+{level * 2} player XP and +{level} reserve XP per drill cycle"
+        });
+    }
+
+    private async Task LoadTownAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            statusMessage = "Choose an active pilot account first.";
+            hydratedPlayerId = 0;
+            return;
+        }
+
+        var townBuildings = await HttpClient.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{PlayerService.SelectedPlayerId}/town") ?? new List<PlayerTownBuilding>();
+        var player = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
+
+        if (player is not null)
+        {
+            PlayerService.UpdateFromPlayer(player);
+            statusMessage = player.OfflineSummary;
+        }
+
+        PlayerService.UpdateTownBuildings(townBuildings);
+
+        foreach (var building in buildings)
+        {
+            building.Level = townBuildings.FirstOrDefault(x => x.BuildingKey == building.Key)?.Level ?? 0;
+        }
+    }
+
+    private async Task UpgradeBuildingAsync(string buildingKey)
+    {
+        var response = await HttpClient.PostAsync($"api/game/player/{PlayerService.SelectedPlayerId}/town/upgrade/{buildingKey}", null);
+        if (!response.IsSuccessStatusCode)
+        {
+            statusMessage = await response.Content.ReadAsStringAsync();
+            return;
+        }
+
+        var updatedBuildings = await response.Content.ReadFromJsonAsync<List<PlayerTownBuilding>>() ?? new List<PlayerTownBuilding>();
+        var player = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
+        if (player is not null)
+        {
+            PlayerService.UpdateFromPlayer(player);
+        }
+
+        PlayerService.UpdateTownBuildings(updatedBuildings);
+        foreach (var building in buildings)
+        {
+            building.Level = updatedBuildings.FirstOrDefault(x => x.BuildingKey == building.Key)?.Level ?? 0;
+        }
+
+        var upgradedBuilding = buildings.First(x => x.Key == buildingKey);
+        var xpGain = 12 + (upgradedBuilding.Level * 6);
+        PlayerService.AddXP(xpGain);
+        var playerSaveResponse = await HttpClient.PostAsJsonAsync("api/game/saveplayer", PlayerService.ToPlayer());
+        playerSaveResponse.EnsureSuccessStatusCode();
+        await RefreshAccountProgressAsync();
+
+        statusMessage = $"{upgradedBuilding.Title} upgraded. +{xpGain} XP.";
+        Status.NotifyResourceChanged();
+    }
+
+    private async Task RefreshAccountProgressAsync()
+    {
+        if (PlayerService.AccountProfileId <= 0)
+        {
+            return;
+        }
+
+        var account = await HttpClient.GetFromJsonAsync<AccountProfile>($"api/game/account/{PlayerService.AccountProfileId}");
+        if (account is not null)
+        {
+            PlayerService.UpdateAccount(account);
+        }
+    }
+
+    private static string GetBuildingChainText(string buildingKey, int targetLevel) => buildingKey switch
+    {
+        "freight-depot" => $"Needs Survey Office LVL {targetLevel} before this district can reach LVL {targetLevel}.",
+        "reactor-annex" => $"Needs Freight Depot LVL {targetLevel} before this district can reach LVL {targetLevel}.",
+        _ => "Foundational district. Higher Survey Office levels unlock the rest of the hub chain."
+    };
+
+    private async void HandleResourceChanged()
+    {
+        await EnsureLoadedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private int GetXpThreshold() => Math.Max(100, PlayerService.CurrentLevel * 100);
+
+    private double GetXpPercent()
+    {
+        var threshold = GetXpThreshold();
+        return threshold <= 0 ? 0 : Math.Clamp(PlayerService.CurrentXP * 100d / threshold, 0, 100);
+    }
+
+    public void Dispose()
+    {
+        Status.OnResourceChanged -= HandleResourceChanged;
+    }
+
+    private sealed class TownBuildingViewModel
+    {
+        public string Key { get; set; } = string.Empty;
+        public string Tag { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public int Level { get; set; }
+        public Func<int, string> UnlockText { get; set; } = _ => string.Empty;
+        public Func<int, string> BonusText { get; set; } = _ => string.Empty;
+
+        public int CreditCost => Key switch
+        {
+            "survey-office" => 700 * (Level + 1),
+            "freight-depot" => 950 * (Level + 1),
+            "reactor-annex" => 1200 * (Level + 1),
+            _ => 800 * (Level + 1)
+        };
+
+        public int AlloyCost => Key switch
+        {
+            "survey-office" => 6 * (Level + 1),
+            "freight-depot" => 10 * (Level + 1),
+            "reactor-annex" => 14 * (Level + 1),
+            _ => 8 * (Level + 1)
+        };
+    }
+}
+
+<style>
+    .town-shell {
+        min-height: calc(100vh - 120px);
+        padding: 30px;
+        color: #f5efe4;
+        background:
+            radial-gradient(circle at top left, rgba(255, 188, 89, 0.16), transparent 22%),
+            radial-gradient(circle at bottom right, rgba(92, 164, 255, 0.18), transparent 25%),
+            linear-gradient(160deg, #0e1218, #17202c 52%, #241a14);
+    }
+
+    .town-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+
+    .town-side-panels {
+        min-width: 240px;
+        display: grid;
+        gap: 14px;
+    }
+
+    .town-eyebrow {
+        margin: 0 0 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: #f1c46a;
+        font-size: 0.78rem;
+    }
+
+    .town-header h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.1rem);
+    }
+
+    .town-lede {
+        max-width: 760px;
+        color: rgba(245, 239, 228, 0.74);
+    }
+
+    .town-bank {
+        min-width: 220px;
+        display: grid;
+        gap: 6px;
+        padding: 18px;
+        border-radius: 18px;
+        background: rgba(10, 17, 24, 0.82);
+        border: 1px solid rgba(241, 196, 106, 0.24);
+    }
+
+    .town-bank span {
+        color: rgba(245, 239, 228, 0.68);
+    }
+
+    .town-bank strong {
+        font-size: 1.5rem;
+        color: #8fdcff;
+    }
+
+    .town-xp-panel {
+        display: grid;
+        gap: 6px;
+        padding: 18px;
+        border-radius: 18px;
+        background: rgba(10, 17, 24, 0.82);
+        border: 1px solid rgba(143, 220, 255, 0.28);
+    }
+
+    .town-xp-panel span,
+    .town-xp-panel small {
+        color: rgba(245, 239, 228, 0.68);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.72rem;
+    }
+
+    .town-xp-panel strong {
+        font-size: 1.3rem;
+        color: #f1c46a;
+    }
+
+    .town-xp-panel small {
+        text-transform: none;
+        letter-spacing: normal;
+        font-size: 0.85rem;
+    }
+
+    .town-xp-track {
+        margin-top: 4px;
+        height: 8px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    .town-xp-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #f1c46a, #8fdcff);
+        transition: width 0.2s ease;
+    }
+
+    .town-status,
+    .town-lock-card {
+        margin-bottom: 20px;
+        padding: 14px 18px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(143, 220, 255, 0.24);
+    }
+
+    .town-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 18px;
+    }
+
+    .town-card {
+        padding: 22px;
+        border-radius: 22px;
+        background: rgba(10, 17, 24, 0.84);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        display: grid;
+        gap: 16px;
+    }
+
+    .town-card.online {
+        border-color: rgba(241, 196, 106, 0.34);
+    }
+
+    .town-card.offline {
+        opacity: 0.85;
+    }
+
+    .town-card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: start;
+    }
+
+    .town-card-head h2 {
+        margin: 6px 0;
+    }
+
+    .town-card-head p {
+        margin: 0;
+        color: rgba(245, 239, 228, 0.7);
+        line-height: 1.45;
+    }
+
+    .town-tag,
+    .town-level,
+    .town-effects span {
+        display: inline-flex;
+        width: fit-content;
+        border-radius: 999px;
+    }
+
+    .town-tag {
+        padding: 4px 10px;
+        background: rgba(143, 220, 255, 0.14);
+        color: #8fdcff;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.7rem;
+    }
+
+    .town-level {
+        padding: 8px 12px;
+        background: rgba(241, 196, 106, 0.16);
+        color: #f1c46a;
+        font-weight: 700;
+    }
+
+    .town-effects {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .town-effects span {
+        padding: 7px 11px;
+        background: rgba(255, 255, 255, 0.06);
+        color: #dff2ff;
+        font-size: 0.82rem;
+    }
+
+    .town-chain,
+    .town-requirement {
+        display: grid;
+        gap: 6px;
+        padding: 12px 14px;
+        border-radius: 16px;
+    }
+
+    .town-chain {
+        background: rgba(241, 196, 106, 0.08);
+        border: 1px solid rgba(241, 196, 106, 0.16);
+    }
+
+    .town-chain strong,
+    .town-requirement span {
+        font-size: 0.83rem;
+    }
+
+    .town-chain span {
+        color: rgba(245, 239, 228, 0.78);
+        line-height: 1.4;
+    }
+
+    .town-requirement.ready {
+        background: rgba(116, 255, 187, 0.08);
+        border: 1px solid rgba(116, 255, 187, 0.2);
+        color: #9cf2c3;
+    }
+
+    .town-requirement.locked {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: rgba(245, 239, 228, 0.72);
+    }
+
+    .town-upgrade {
+        border: none;
+        border-radius: 999px;
+        padding: 12px 16px;
+        background: linear-gradient(90deg, #f1c46a, #f08b52);
+        color: #1a1208;
+        font-weight: 800;
+    }
+
+    .town-upgrade:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+    @@media (max-width: 820px) {
+        .town-shell {
+            padding: 18px;
+        }
+
+        .town-header {
+            flex-direction: column;
+        }
+    }
+</style>

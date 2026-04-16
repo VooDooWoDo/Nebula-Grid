@@ -1,0 +1,756 @@
+@page "/academy"
+@using System.Net.Http.Json
+@using NebulaGrid.Shared.Models
+@using NebulaGrid.Shared.Services
+@inject HttpClient HttpClient
+@inject PlayerService PlayerService
+@inject GameStatus Status
+@implements IDisposable
+
+<PageTitle>Pilot Academy - Nebula Grid</PageTitle>
+
+<div class="academy-shell">
+    <section class="academy-header">
+        <div>
+            <p class="eyebrow">Pilot Academy</p>
+            <h1>Unlock your pilot identity</h1>
+            <p class="lede">Pilots now own their class and skill tree directly. Level 3 is the moment a cadet commits to one permanent doctrine, and each of your three hangar slots can cover a different role.</p>
+        </div>
+        <div class="academy-bank">
+            <span>Credits</span>
+            <strong>@PlayerService.Resource1</strong>
+            <span>Fuel</span>
+            <strong>@PlayerService.Resource2</strong>
+            <small>Class picks are permanent. Across three pilot slots, each class can be chosen once.</small>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(statusMessage))
+    {
+        <div class="academy-status">@statusMessage</div>
+    }
+
+    @if (PlayerService.SelectedPlayerId <= 0)
+    {
+        <section class="academy-empty">
+            <h2>No active pilot</h2>
+            <p>Open the hangar first and enter a pilot before managing class progression.</p>
+        </section>
+    }
+    else
+    {
+        <div class="academy-grid">
+            <article class="academy-card focus-card">
+                <div class="academy-card-head">
+                    <div>
+                        <span class="academy-rarity">Active Pilot</span>
+                        <h2>@PlayerService.PlayerName</h2>
+                        <p>@GetClassHeadline()</p>
+                        <p class="academy-role">@GetRoleSummary()</p>
+                    </div>
+                    <div class="academy-level">LVL @PlayerService.CurrentLevel</div>
+                </div>
+
+                <div class="academy-bonuses">
+                    <span>+@PlayerService.CommanderMiningBonusPercent% Mining</span>
+                    <span>+@PlayerService.CommanderCargoBonus Cargo</span>
+                    <span>+@PlayerService.CommanderCritBonus% Crit</span>
+                </div>
+
+                <div class="academy-progress">
+                    XP: @PlayerService.CurrentXP / @(Math.Max(1, PlayerService.CurrentLevel) * 100)
+                </div>
+
+                @if (PlayerService.CanChoosePilotClass)
+                {
+                    <div class="class-unlock-stage">
+                        <div class="unlock-stage-copy">
+                            <span class="unlock-stage-tag">Level 3 unlocked</span>
+                            <h3>Pilot class selection is now live</h3>
+                            <p>The academy core has stabilized. Choose one permanent doctrine for this pilot. The decision is final, and already-claimed classes stay locked for the rest of this account.</p>
+                        </div>
+                        <div class="unlock-meter-shell">
+                            <div class="unlock-meter-ring">
+                                <strong>LVL 3</strong>
+                                <span>Reached</span>
+                            </div>
+                            <small>Identity lock can only happen once.</small>
+                        </div>
+                    </div>
+
+                    <div class="class-pick-panel class-pick-panel-live">
+                        <strong>Choose a permanent class</strong>
+                        <span>Unavailable classes are already assigned to another pilot on this account.</span>
+                        <div class="class-pick-grid class-pick-grid-live">
+                            @foreach (var classOption in classOptions)
+                            {
+                                <button class="class-pick-card @(classOption.IsAvailable ? "ready" : "spent")"
+                                        disabled="@(!classOption.IsAvailable || isBusy)"
+                                        @onclick="() => ChooseClassAsync(classOption.Key)">
+                                    <div class="class-card-head">
+                                        <strong>@classOption.Key</strong>
+                                        <span class="class-card-state">@(classOption.IsAvailable ? "Ready" : "Claimed")</span>
+                                    </div>
+                                    <span>@classOption.Description</span>
+                                    <small>@classOption.Signature</small>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+                else if (string.IsNullOrWhiteSpace(PlayerService.PilotClass))
+                {
+                    <div class="academy-lock-copy academy-lock-sequence">
+                        <div>
+                            <strong>Class Core Locked</strong>
+                            <span>Current Level: @PlayerService.CurrentLevel</span>
+                        </div>
+                        <div class="lock-track">
+                            <div class="lock-track-fill" style="width: @GetUnlockProgressPercent()%"></div>
+                        </div>
+                        <p>Reach Level 3 to trigger the academy unlock sequence and choose this pilot's permanent role.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="academy-skills">
+                        <div class="academy-skill favored">
+                            <strong>@GetSkillLabel()</strong>
+                            <span>Level @GetSkillLevel()</span>
+                            <button class="skill-upgrade"
+                                    disabled="@(isBusy || PlayerService.Resource1 < GetSkillCost())"
+                                    @onclick="UpgradeSkillAsync">
+                                Train (@GetSkillCost())
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="academy-talents">
+                        <div class="academy-talent favored">
+                            <div class="academy-talent-copy">
+                                <strong>@GetTalentLabel()</strong>
+                                <span>@GetTalentEffectText()</span>
+                                <span>Tier @GetTalentLevel() / 3</span>
+                            </div>
+                            <button class="talent-upgrade"
+                                    disabled="@(isBusy || GetTalentLevel() >= 3 || PlayerService.Resource1 < GetTalentCreditsCost() || PlayerService.Resource2 < GetTalentFuelCost())"
+                                    @onclick="UpgradeTalentAsync">
+                                @(GetTalentLevel() >= 3 ? "Maxed" : $"Upgrade ({GetTalentCreditsCost()} / {GetTalentFuelCost()})")
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="academy-assignment">
+                        <div class="academy-assignment-copy">
+                            <strong>Reserve Job</strong>
+                            <span>@PlayerService.CommanderTraitSummary</span>
+                            <small>Other pilots on the same account now run these reserve tasks while this pilot is active.</small>
+                        </div>
+                    </div>
+                }
+            </article>
+
+            <article class="academy-card side-card">
+                <h2>Class Rules</h2>
+                <ul class="academy-rule-list">
+                    <li>Prospector focuses mining and credit generation.</li>
+                    <li>Quartermaster focuses cargo flow and fuel logistics.</li>
+                    <li>Vanguard focuses reactor pressure and crit output.</li>
+                    <li>Each of your three pilot slots should end up covering one class.</li>
+                </ul>
+            </article>
+        </div>
+    }
+</div>
+
+@code {
+    private string? statusMessage;
+    private int hydratedPlayerId;
+    private bool isBusy;
+    private List<ClassOption> classOptions =
+    [
+        new("Prospector", "Mining specialist with the strongest credit scaling.", "Best for heavy credit bursts and extraction loops."),
+        new("Quartermaster", "Cargo and fuel specialist for supply-heavy play.", "Best for logistics growth, fuel flow and hold expansion."),
+        new("Vanguard", "Reactor and crit specialist for burst-focused play.", "Best for crit spikes, reactor pressure and XP-heavy tempo." )
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Status.OnResourceChanged += HandleResourceChanged;
+        await EnsureLoadedAsync();
+    }
+
+    private async Task EnsureLoadedAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            hydratedPlayerId = 0;
+            statusMessage = "Choose a pilot in the hangar first.";
+            return;
+        }
+
+        if (hydratedPlayerId == PlayerService.SelectedPlayerId)
+        {
+            return;
+        }
+
+        hydratedPlayerId = PlayerService.SelectedPlayerId;
+        await LoadPilotAsync();
+    }
+
+    private async void HandleResourceChanged()
+    {
+        await EnsureLoadedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadPilotAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        statusMessage = null;
+        var player = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
+        var townBuildings = await HttpClient.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{PlayerService.SelectedPlayerId}/town") ?? new List<PlayerTownBuilding>();
+        PlayerService.UpdateTownBuildings(townBuildings);
+
+        if (player is not null)
+        {
+            PlayerService.UpdateFromPlayer(player);
+            PlayerService.SyncActivePilotPresentation();
+            statusMessage = player.OfflineSummary;
+        }
+
+        await LoadClassAvailabilityAsync();
+    }
+
+    private async Task LoadClassAvailabilityAsync()
+    {
+        if (PlayerService.AccountProfileId <= 0)
+        {
+            return;
+        }
+
+        var slots = await HttpClient.GetFromJsonAsync<List<CharacterSlotSummary>>($"api/game/account/{PlayerService.AccountProfileId}/slots") ?? new List<CharacterSlotSummary>();
+        var usedClasses = slots
+            .Where(slot => slot.Player is not null && slot.Player.PlayerID != PlayerService.SelectedPlayerId && !string.IsNullOrWhiteSpace(slot.Player.PilotClass))
+            .Select(slot => slot.Player!.PilotClass)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        classOptions = classOptions
+            .Select(option => option with { IsAvailable = !usedClasses.Contains(option.Key) })
+            .ToList();
+    }
+
+    private async Task ChooseClassAsync(string pilotClass)
+    {
+        isBusy = true;
+        try
+        {
+            var response = await HttpClient.PostAsync($"api/game/player/{PlayerService.SelectedPlayerId}/class/{pilotClass}", null);
+            if (!response.IsSuccessStatusCode)
+            {
+                statusMessage = await response.Content.ReadAsStringAsync();
+                return;
+            }
+
+            var player = await response.Content.ReadFromJsonAsync<Player>();
+            if (player is not null)
+            {
+                PlayerService.UpdateFromPlayer(player);
+                PlayerService.SyncActivePilotPresentation();
+            }
+
+            await LoadClassAvailabilityAsync();
+            statusMessage = $"{pilotClass} locked in for this pilot.";
+            Status.NotifyResourceChanged();
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task UpgradeSkillAsync()
+    {
+        await PostAndRefreshAsync($"api/game/player/{PlayerService.SelectedPlayerId}/skills/{GetSkillKey()}/upgrade", $"{GetSkillLabel()} training completed.");
+    }
+
+    private async Task UpgradeTalentAsync()
+    {
+        await PostAndRefreshAsync($"api/game/player/{PlayerService.SelectedPlayerId}/talents/{GetSkillKey()}/upgrade", $"{GetTalentLabel()} upgraded.");
+    }
+
+    private async Task PostAndRefreshAsync(string url, string successMessage)
+    {
+        isBusy = true;
+        try
+        {
+            var response = await HttpClient.PostAsync(url, null);
+            if (!response.IsSuccessStatusCode)
+            {
+                statusMessage = await response.Content.ReadAsStringAsync();
+                return;
+            }
+
+            var player = await response.Content.ReadFromJsonAsync<Player>();
+            if (player is not null)
+            {
+                PlayerService.UpdateFromPlayer(player);
+            }
+
+            statusMessage = successMessage;
+            Status.NotifyResourceChanged();
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private string GetClassHeadline() => string.IsNullOrWhiteSpace(PlayerService.PilotClass)
+        ? "Classless Cadet"
+        : $"Class: {PlayerService.PilotClass}";
+
+    private string GetRoleSummary() => string.IsNullOrWhiteSpace(PlayerService.PilotClass)
+        ? "Reach Level 3 to lock in a permanent specialization."
+        : PlayerService.ActiveClassRoleSummary;
+
+    private string GetSkillKey() => PlayerService.PilotClass switch
+    {
+        "Quartermaster" => "logistics",
+        "Vanguard" => "reactor",
+        _ => "mining"
+    };
+
+    private string GetSkillLabel() => GetSkillKey() switch
+    {
+        "logistics" => "Logistics Training",
+        "reactor" => "Reactor Training",
+        _ => "Mining Training"
+    };
+
+    private int GetSkillLevel() => GetSkillKey() switch
+    {
+        "logistics" => PlayerService.PilotLogisticsSkill,
+        "reactor" => PlayerService.PilotReactorSkill,
+        _ => PlayerService.PilotMiningSkill
+    };
+
+    private int GetSkillCost() => GetSkillKey() switch
+    {
+        "logistics" => 260 * (GetSkillLevel() + 1),
+        "reactor" => 320 * (GetSkillLevel() + 1),
+        _ => 220 * (GetSkillLevel() + 1)
+    };
+
+    private string GetTalentLabel() => GetSkillKey() switch
+    {
+        "logistics" => "Freight Doctrine",
+        "reactor" => "Pressure Doctrine",
+        _ => "Extraction Doctrine"
+    };
+
+    private string GetTalentEffectText() => GetSkillKey() switch
+    {
+        "logistics" => "+12 cargo per tier and stronger reserve hauling.",
+        "reactor" => "+3% crit per tier and stronger reactor reserve drills.",
+        _ => "+5% mining per tier and stronger survey reserve income."
+    };
+
+    private int GetTalentLevel() => GetSkillKey() switch
+    {
+        "logistics" => PlayerService.PilotLogisticsTreeLevel,
+        "reactor" => PlayerService.PilotReactorTreeLevel,
+        _ => PlayerService.PilotMiningTreeLevel
+    };
+
+    private int GetTalentCreditsCost() => GetSkillKey() switch
+    {
+        "logistics" => 820 * (GetTalentLevel() + 1),
+        "reactor" => 900 * (GetTalentLevel() + 1),
+        _ => 750 * (GetTalentLevel() + 1)
+    };
+
+    private int GetTalentFuelCost() => GetSkillKey() switch
+    {
+        "logistics" => 14 * (GetTalentLevel() + 1),
+        "reactor" => 16 * (GetTalentLevel() + 1),
+        _ => 12 * (GetTalentLevel() + 1)
+    };
+
+    private int GetUnlockProgressPercent()
+    {
+        var percent = (int)Math.Round((Math.Min(PlayerService.CurrentLevel, 3) / 3d) * 100, MidpointRounding.AwayFromZero);
+        return Math.Clamp(percent, 0, 100);
+    }
+
+    public void Dispose()
+    {
+        Status.OnResourceChanged -= HandleResourceChanged;
+    }
+
+    private sealed record ClassOption(string Key, string Description, string Signature)
+    {
+        public bool IsAvailable { get; init; } = true;
+    }
+}
+
+<style>
+    .academy-shell {
+        min-height: calc(100vh - 120px);
+        padding: 28px;
+        color: #f6f4ef;
+        background:
+            radial-gradient(circle at top left, rgba(72, 145, 255, 0.18), transparent 24%),
+            radial-gradient(circle at bottom right, rgba(236, 180, 92, 0.18), transparent 26%),
+            linear-gradient(140deg, #081018, #111a26 58%, #1a1612);
+    }
+
+    .academy-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+
+    .eyebrow {
+        margin: 0 0 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: #8fdcff;
+        font-size: 0.76rem;
+    }
+
+    .academy-header h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+    }
+
+    .lede {
+        max-width: 760px;
+        color: rgba(246, 244, 239, 0.76);
+    }
+
+    .academy-bank,
+    .academy-card,
+    .academy-empty {
+        background: rgba(8, 19, 31, 0.82);
+        border: 1px solid rgba(143, 220, 255, 0.24);
+        border-radius: 22px;
+        box-shadow: 0 20px 35px rgba(0, 0, 0, 0.24);
+    }
+
+    .academy-bank {
+        min-width: 260px;
+        display: grid;
+        gap: 6px;
+        align-content: start;
+        padding: 18px;
+    }
+
+    .academy-bank span,
+    .academy-bank small,
+    .academy-lock-copy,
+    .academy-assignment-copy span,
+    .academy-assignment-copy small,
+    .academy-rule-list,
+    .class-pick-card span,
+    .class-pick-card small,
+    .academy-talent-copy span,
+    .academy-progress {
+        color: rgba(246, 244, 239, 0.72);
+    }
+
+    .academy-bank strong {
+        font-size: 1.6rem;
+        color: #f1c46a;
+    }
+
+    .academy-status {
+        margin-bottom: 18px;
+        padding: 12px 16px;
+        border-radius: 14px;
+        background: rgba(92, 164, 255, 0.12);
+        border: 1px solid rgba(143, 220, 255, 0.24);
+        color: #bde9ff;
+    }
+
+    .academy-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.9fr);
+        gap: 18px;
+    }
+
+    .academy-card,
+    .academy-empty {
+        padding: 22px;
+    }
+
+    .academy-card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: start;
+    }
+
+    .academy-card-head h2,
+    .side-card h2 {
+        margin: 0;
+    }
+
+    .academy-card-head p {
+        margin: 6px 0 0;
+        color: #8fdcff;
+    }
+
+    .academy-rarity,
+    .academy-level {
+        display: inline-flex;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        background: rgba(241, 196, 106, 0.16);
+        color: #f1c46a;
+        font-weight: 700;
+    }
+
+    .academy-role {
+        margin-top: 10px !important;
+        color: #9fe0ff !important;
+        line-height: 1.45;
+        font-size: 0.84rem;
+    }
+
+    .academy-bonuses,
+    .academy-skills,
+    .academy-talents {
+        display: grid;
+        gap: 10px;
+        margin-top: 16px;
+    }
+
+    .academy-bonuses {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+    .academy-bonuses span,
+    .academy-skill,
+    .academy-talent,
+    .academy-assignment,
+    .academy-lock-copy,
+    .class-pick-panel {
+        padding: 14px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.045);
+    }
+
+    .class-unlock-stage,
+    .academy-lock-sequence {
+        display: grid;
+        gap: 16px;
+        margin-top: 16px;
+        padding: 18px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, rgba(241, 196, 106, 0.16), rgba(143, 220, 255, 0.1));
+        border: 1px solid rgba(241, 196, 106, 0.24);
+    }
+
+    .class-unlock-stage {
+        grid-template-columns: minmax(0, 1.5fr) auto;
+        align-items: center;
+    }
+
+    .unlock-stage-copy,
+    .academy-lock-sequence {
+        display: grid;
+        gap: 8px;
+    }
+
+    .unlock-stage-copy h3,
+    .class-card-head {
+        margin: 0;
+    }
+
+    .unlock-stage-tag,
+    .class-card-state {
+        display: inline-flex;
+        width: fit-content;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: rgba(7, 16, 24, 0.5);
+        color: #f1c46a;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.7rem;
+        font-weight: 700;
+    }
+
+    .unlock-meter-shell {
+        display: grid;
+        gap: 10px;
+        justify-items: center;
+        color: rgba(246, 244, 239, 0.78);
+    }
+
+    .unlock-meter-ring {
+        width: 110px;
+        height: 110px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background:
+            radial-gradient(circle at center, rgba(8, 19, 31, 0.96) 46%, transparent 47%),
+            conic-gradient(from 180deg, #f1c46a, #8fdcff, #f1c46a);
+        box-shadow: 0 0 30px rgba(241, 196, 106, 0.22);
+    }
+
+    .unlock-meter-ring strong,
+    .unlock-meter-ring span {
+        display: block;
+        text-align: center;
+    }
+
+    .unlock-meter-ring strong {
+        font-size: 1.2rem;
+    }
+
+    .class-pick-panel-live {
+        margin-top: 16px;
+        border: 1px solid rgba(143, 220, 255, 0.2);
+    }
+
+    .class-pick-grid-live {
+        margin-top: 12px;
+    }
+
+    .class-pick-card.ready {
+        box-shadow: 0 10px 24px rgba(143, 220, 255, 0.08);
+    }
+
+    .class-pick-card.spent {
+        filter: saturate(0.4);
+    }
+
+    .class-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 8px;
+    }
+
+    .lock-track {
+        height: 10px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(7, 16, 24, 0.55);
+    }
+
+    .lock-track-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #8fdcff, #f1c46a);
+    }
+
+    .academy-skill,
+    .academy-talent {
+        display: grid;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .academy-skill {
+        grid-template-columns: 1fr auto auto;
+    }
+
+    .academy-talent {
+        grid-template-columns: 1fr auto;
+    }
+
+    .favored {
+        border: 1px solid rgba(241, 196, 106, 0.28);
+    }
+
+    .skill-upgrade,
+    .talent-upgrade,
+    .class-pick-card {
+        border: none;
+        border-radius: 18px;
+        font-weight: 700;
+    }
+
+    .skill-upgrade {
+        padding: 10px 14px;
+        background: linear-gradient(90deg, #f1c46a, #f59b52);
+        color: #1b1308;
+    }
+
+    .talent-upgrade {
+        padding: 10px 14px;
+        background: linear-gradient(90deg, #8fdcff, #3bc6b3);
+        color: #071018;
+    }
+
+    .skill-upgrade:disabled,
+    .talent-upgrade:disabled,
+    .class-pick-card:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+    .academy-assignment,
+    .class-pick-panel,
+    .academy-talent-copy {
+        display: grid;
+        gap: 6px;
+    }
+
+    .class-pick-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+        margin-top: 10px;
+    }
+
+    .class-pick-card {
+        display: grid;
+        gap: 6px;
+        text-align: left;
+        padding: 16px;
+        background: linear-gradient(180deg, rgba(143, 220, 255, 0.14), rgba(255, 255, 255, 0.04));
+        color: #f6f4ef;
+        border: 1px solid rgba(143, 220, 255, 0.18);
+    }
+
+    .academy-rule-list {
+        margin: 14px 0 0;
+        padding-left: 18px;
+        display: grid;
+        gap: 8px;
+    }
+
+    @@media (max-width: 920px) {
+        .academy-shell {
+            padding: 18px;
+        }
+
+        .academy-header,
+        .academy-grid {
+            grid-template-columns: 1fr;
+            display: grid;
+        }
+
+        .class-unlock-stage {
+            grid-template-columns: 1fr;
+        }
+
+        .academy-skill,
+        .academy-talent {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
