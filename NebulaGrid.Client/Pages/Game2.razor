@@ -149,7 +149,7 @@
         </div>
 
            <div class="station"
-               style="left: @(UnloadStationX)px; top: @(UnloadStationY)px; opacity: @((game2State.PendingResource1 > 0 || game2State.PendingResource2 > 0 || game2State.PendingResource3 > 0) ? "1" : "0.55");"
+               style="left: @(UnloadStationX)px; top: @(UnloadStationY)px; opacity: @((game2State.PendingResource2 > 0 || game2State.PendingResource3 > 0) ? "1" : "0.55");"
              title="Cargo Dock"
              @onclick:stopPropagation="true"
              @onclick="UnloadCargoAsync">
@@ -174,11 +174,11 @@
             </div>
 
             <div class="hud-line">
-                Unload Value: @game2State.PendingResource1 credits • @game2State.PendingResource3 alloy • @game2State.PendingResource2 fuel
+                Unload Value: @game2State.PendingResource3 alloy • @game2State.PendingResource2 fuel
             </div>
 
             <div style="margin-top: 12px;">
-                <button class="resource-select" @onclick="UnloadCargoAsync" @onclick:stopPropagation="true" disabled="@(game2State.PendingResource1 == 0 && game2State.PendingResource2 == 0 && game2State.PendingResource3 == 0)">
+                <button class="resource-select" @onclick="UnloadCargoAsync" @onclick:stopPropagation="true" disabled="@(game2State.PendingResource2 == 0 && game2State.PendingResource3 == 0)">
                     Fly to dock and unload
                 </button>
             </div>
@@ -190,7 +190,7 @@
                  style="left: @(ast.X)px; top: @(ast.Y)px; opacity: @(ast.IsTarget ? "0.3" : "1");"
                  @onclick:stopPropagation="true"
                  @onclick="() => StartHarvest(ast)">
-                @(selectedType == "R2" ? "💎" : "☄️")
+                @(selectedType == "R2" ? "⛽" : "☄️")
             </div>
         }
 
@@ -202,8 +202,8 @@
 
     <div style="padding: 10px; text-align: center;">
         <select class="resource-select" @bind="selectedType">
-            <option value="R1">Mine resource 1</option>
-            <option value="R2">Mine resource 2</option>
+            <option value="R1">Mine ore</option>
+            <option value="R2">Mine fuel cells</option>
         </select>
 
         @if (!string.IsNullOrWhiteSpace(statusMessage))
@@ -214,13 +214,21 @@
 </div>
 
 @code {
-    private const int OreCargoPerRun = 10;
+    private const int OreCargoPerRun = 3;
     private const int FuelCargoPerRun = 5;
-    private const int BaseOreCreditValue = 25;
     private const int BaseOreAlloyValue = 3;
     private const int BaseFuelValue = 5;
     private const double UnloadStationX = 72;
     private const double UnloadStationY = 472;
+    private const int SpawnPadding = 50;
+    private const int HudSafeLeft = 560;
+    private const int HudSafeTop = 0;
+    private const int HudSafeRight = 900;
+    private const int HudSafeBottom = 180;
+    private const int HangarSafeLeft = 0;
+    private const int HangarSafeTop = 360;
+    private const int HangarSafeRight = 250;
+    private const int HangarSafeBottom = 600;
     private string selectedType = "R1";
     private double posX = 100, posY = 100, flightSpeed = 0.8;
     private bool isMoving;
@@ -272,6 +280,7 @@
         {
             2 => "🛸",
             3 => "🛰️",
+            4 => "👑",
             _ => "🚀",
         };
     }
@@ -321,7 +330,6 @@
         if (selectedType == "R1")
         {
             game2State.StoredOre += OreCargoPerRun;
-            game2State.PendingResource1 += GetOreCreditValue();
             game2State.PendingResource3 += GetOreAlloyValue();
             AddFloatingLoot($"+{OreCargoPerRun} Ore", GetShipLootX(), GetShipLootY(-12), "#f1c46a");
         }
@@ -345,7 +353,7 @@
         statusMessage = $"Asteroid secured. Cargo transferred to ship hold. +{xpGain} XP.";
         asteroids.Remove(ast);
         isMoving = false;
-        asteroids.Add(new Asteroid { Id = Guid.NewGuid(), X = rnd.Next(50, 800), Y = rnd.Next(50, 500) });
+        asteroids.Add(CreateAsteroid());
     }
 
     private async Task SavePlayerAsync()
@@ -367,7 +375,7 @@
             return;
         }
 
-        if (game2State.PendingResource1 == 0 && game2State.PendingResource2 == 0 && game2State.PendingResource3 == 0)
+        if (game2State.PendingResource2 == 0 && game2State.PendingResource3 == 0)
         {
             statusMessage = "Cargo hold is already empty.";
             return;
@@ -377,21 +385,19 @@
         statusMessage = "Docking at cargo station...";
         await MoveShipToAsync(UnloadStationX + 12, UnloadStationY + 12);
 
-        PlayerService.Resource1 += game2State.PendingResource1;
         PlayerService.Resource2 += game2State.PendingResource2;
         PlayerService.Alloy += game2State.PendingResource3;
         var unloadXp = Math.Max(6, (game2State.StoredOre / 5) + game2State.StoredFuel);
         PlayerService.AddXP(unloadXp);
-        AddFloatingLoot($"+{game2State.PendingResource1} Credits", GetShipLootX(), GetShipLootY(-18), "#f1c46a");
         if (game2State.PendingResource3 > 0)
         {
-            AddFloatingLoot($"+{game2State.PendingResource3} Alloy", GetShipLootX(), GetShipLootY(8), "#92ffc6");
+            AddFloatingLoot($"+{game2State.PendingResource3} Alloy", GetShipLootX(), GetShipLootY(-4), "#92ffc6");
         }
         if (game2State.PendingResource2 > 0)
         {
-            AddFloatingLoot($"+{game2State.PendingResource2} Fuel", GetShipLootX(), GetShipLootY(30), "#8fdcff");
+            AddFloatingLoot($"+{game2State.PendingResource2} Fuel", GetShipLootX(), GetShipLootY(18), "#8fdcff");
         }
-        AddFloatingLoot($"+{unloadXp} XP", GetShipLootX(), GetShipLootY(52), "#d2a6ff");
+        AddFloatingLoot($"+{unloadXp} XP", GetShipLootX(), GetShipLootY(40), "#d2a6ff");
 
         game2State.StoredOre = 0;
         game2State.StoredFuel = 0;
@@ -420,7 +426,7 @@
         asteroids.Clear();
         for (var i = 0; i < 5; i++)
         {
-            asteroids.Add(new Asteroid { Id = Guid.NewGuid(), X = rnd.Next(50, 800), Y = rnd.Next(50, 500) });
+            asteroids.Add(CreateAsteroid());
         }
     }
 
@@ -430,8 +436,6 @@
         posY = targetY;
         await Task.Delay((int)Math.Ceiling(flightSpeed * 1000));
     }
-
-    private int GetOreCreditValue() => PlayerService.GetModifiedCreditGain(BaseOreCreditValue);
 
     private int GetOreAlloyValue() => BaseOreAlloyValue + Math.Max(0, PlayerService.MiningResearchLevel / 2);
 
@@ -462,13 +466,12 @@
     {
         if (game2State.StoredOre == 0 && game2State.PendingResource1 > 0)
         {
-            var oreTrips = Math.Max(1, (int)Math.Round((double)game2State.PendingResource1 / GetOreCreditValue(), MidpointRounding.AwayFromZero));
-            game2State.StoredOre = oreTrips * OreCargoPerRun;
+            game2State.PendingResource1 = 0;
         }
 
         if (game2State.StoredOre > 0 && game2State.PendingResource3 == 0)
         {
-            var oreTrips = Math.Max(1, game2State.StoredOre / OreCargoPerRun);
+            var oreTrips = Math.Max(1, (int)Math.Ceiling((double)game2State.StoredOre / OreCargoPerRun));
             game2State.PendingResource3 = oreTrips * GetOreAlloyValue();
         }
 
@@ -476,6 +479,41 @@
         {
             game2State.StoredFuel = game2State.PendingResource2;
         }
+    }
+
+    private Asteroid CreateAsteroid()
+    {
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            var x = rnd.Next(SpawnPadding, 800);
+            var y = rnd.Next(SpawnPadding, 500);
+
+            if (IsInsideRestrictedArea(x, y))
+            {
+                continue;
+            }
+
+            return new Asteroid
+            {
+                Id = Guid.NewGuid(),
+                X = x,
+                Y = y
+            };
+        }
+
+        return new Asteroid
+        {
+            Id = Guid.NewGuid(),
+            X = 320,
+            Y = 220
+        };
+    }
+
+    private static bool IsInsideRestrictedArea(int x, int y)
+    {
+        var insideHud = x >= HudSafeLeft && x <= HudSafeRight && y >= HudSafeTop && y <= HudSafeBottom;
+        var insideHangar = x >= HangarSafeLeft && x <= HangarSafeRight && y >= HangarSafeTop && y <= HangarSafeBottom;
+        return insideHud || insideHangar;
     }
 
     public class Asteroid

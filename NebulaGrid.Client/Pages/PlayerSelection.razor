@@ -52,21 +52,142 @@
                 </div>
                 <div class="account-meta-pill">
                     <strong>Fleet Levels</strong>
-                    <span>@account.CombinedPilotLevels pilot levels • @account.CombinedCommanderLevels / 3 classes locked</span>
+                    <span>@account.CombinedPilotLevels pilot levels</span>
                 </div>
                 <div class="account-meta-pill">
                     <strong>Account Bonus</strong>
-                    <span>+@account.CreditBonusPercent% Credits • +@account.FuelBonusFlat Fuel/s</span>
+                    <span>+@account.CreditBonusPercent% Credits</span>
                 </div>
                 <div class="account-meta-pill">
                     <strong>Unlocked Slots</strong>
                     <span>@account.UnlockedSlotCount / 3 online</span>
                 </div>
             </div>
+
+            <div class="hangar-preview-toolbar">
+                <div>
+                    <p class="slot-tag">Offline Forecast</p>
+                    <strong>@GetPreviewWindowLabel()</strong>
+                </div>
+                <div class="hangar-preview-switches">
+                    <button class="preview-window-button @(previewWindowMinutes == 60 ? "active" : string.Empty)" type="button" @onclick='() => SetPreviewWindow(60)'>1h</button>
+                    <button class="preview-window-button @(previewWindowMinutes == 480 ? "active" : string.Empty)" type="button" @onclick='() => SetPreviewWindow(480)'>8h</button>
+                    <button class="preview-window-button @(previewWindowMinutes == 1440 ? "active" : string.Empty)" type="button" @onclick='() => SetPreviewWindow(1440)'>24h</button>
+                </div>
+            </div>
+
+            <div class="hangar-focus-toolbar">
+                <div>
+                    <p class="slot-tag">Roster Priority</p>
+                    <strong>@GetPreviewFocusLabel()</strong>
+                </div>
+                <div class="hangar-preview-switches">
+                    <button class="preview-window-button @(previewFocus == "credits" ? "active" : string.Empty)" type="button" @onclick='() => SetPreviewFocus("credits")'>Credits</button>
+                    <button class="preview-window-button @(previewFocus == "fuel" ? "active" : string.Empty)" type="button" @onclick='() => SetPreviewFocus("fuel")'>Fuel</button>
+                    <button class="preview-window-button @(previewFocus == "xp" ? "active" : string.Empty)" type="button" @onclick='() => SetPreviewFocus("xp")'>Player XP</button>
+                    <button class="preview-window-button @(previewFocus == "reserve-xp" ? "active" : string.Empty)" type="button" @onclick='() => SetPreviewFocus("reserve-xp")'>Reserve Pilot XP</button>
+                    <button class="preview-window-button @(previewFocus == "next-level" ? "active" : string.Empty)" type="button" @onclick='() => SetPreviewFocus("next-level")'>Next Level</button>
+                </div>
+            </div>
+
+            <div class="fleet-forecast-grid">
+                <div class="fleet-forecast-pill">
+                    <strong>Fleet Credits</strong>
+                    <span>+@GetFleetPreviewCredits() in @GetPreviewWindowShortLabel()</span>
+                </div>
+                <div class="fleet-forecast-pill">
+                    <strong>Fleet Fuel</strong>
+                    <span>+@GetFleetPreviewFuel() in @GetPreviewWindowShortLabel()</span>
+                </div>
+                <div class="fleet-forecast-pill">
+                    <strong>Fleet Player XP</strong>
+                    <span>+@GetFleetPreviewPlayerXp() in @GetPreviewWindowShortLabel()</span>
+                </div>
+                <div class="fleet-forecast-pill">
+                    <strong>Fleet Reserve Pilot XP</strong>
+                    <span>+@GetFleetPreviewReserveXp() in @GetPreviewWindowShortLabel()</span>
+                </div>
+                <div class="fleet-forecast-pill forecast-growth-pill">
+                    <strong>Fleet Reserve Growth</strong>
+                    <span>About +@GetFleetProjectedReserveLevels() LVL in @GetPreviewWindowShortLabel()</span>
+                </div>
+                <div class="fleet-forecast-pill forecast-growth-pill">
+                    <strong>Reserve Level-Ups</strong>
+                    <span>@GetPilotsWithProjectedLevelUps() pilots in @GetPreviewWindowShortLabel()</span>
+                </div>
+            </div>
+
+            <div class="hangar-recommendation-card">
+                <p class="slot-tag">Recommendation</p>
+                <strong>@GetReserveRecommendationTitle()</strong>
+                <p>@GetReserveRecommendationText()</p>
+                <label class="recommendation-toggle">
+                    <input type="checkbox" checked="@autoOptimizeHangar" @onchange="ToggleAutoOptimizeHangarAsync" />
+                    <span>Auto-optimize on open</span>
+                </label>
+                <button class="secondary-action-button recommendation-action" type="button" @onclick="OptimizeReserveView">
+                    @GetReserveRecommendationActionLabel()
+                </button>
+            </div>
+
+            @if (ShouldShowSetupCard())
+            {
+                <div class="hangar-setup-card">
+                    <p class="slot-tag">Setup</p>
+                    <strong>@GetSetupCardTitle()</strong>
+                    <p>@GetSetupCardText()</p>
+                    <button class="secondary-action-button recommendation-action" type="button" @onclick="RunSetupActionAsync">
+                        @GetSetupCardActionLabel()
+                    </button>
+                </div>
+            }
+
+            <div class="hangar-top-picks-grid">
+                <button class="hangar-top-pick-card @(IsTopPickActive("credits") ? "active" : string.Empty)" type="button" @onclick='() => ApplyTopPickMode("credits")'>
+                    <p class="slot-tag">Top Credits</p>
+                    <strong>@GetTopPickName("credits")</strong>
+                    <span>@GetTopPickValueText("credits")</span>
+                    <small>@GetTopPickLeadText("credits")</small>
+                </button>
+                    <button class="hangar-top-pick-card hangar-top-pick-card-featured @(IsAllRoundPickActive() ? "active" : string.Empty)" type="button" @onclick="ApplyAllRoundRecommendation">
+                        <p class="slot-tag">Best All-Round</p>
+                        <strong>@GetAllRoundPickName()</strong>
+                        <span>@GetAllRoundPickHeadline()</span>
+                        <em>@GetAllRoundTimeShiftNote()</em>
+                        <small>@GetAllRoundPickReason()</small>
+                    </button>
+                <button class="hangar-top-pick-card hangar-top-pick-card-warning @(IsWeakSpotActive() ? "active" : string.Empty)" type="button" @onclick="ApplyWeakSpotFocus">
+                    <p class="slot-tag">Weak Spot</p>
+                    <strong>@GetWeakSpotTitle()</strong>
+                    <span>@GetWeakSpotHeadline()</span>
+                    <em>@GetWeakSpotFixerLabel()</em>
+                    <small>@GetWeakSpotReason()</small>
+                </button>
+                <button class="hangar-top-pick-card @(IsTopPickActive("fuel") ? "active" : string.Empty)" type="button" @onclick='() => ApplyTopPickMode("fuel")'>
+                    <p class="slot-tag">Top Fuel</p>
+                    <strong>@GetTopPickName("fuel")</strong>
+                    <span>@GetTopPickValueText("fuel")</span>
+                    <small>@GetTopPickLeadText("fuel")</small>
+                </button>
+                <button class="hangar-top-pick-card @(IsTopPickActive("xp") ? "active" : string.Empty)" type="button" @onclick='() => ApplyTopPickMode("xp")'>
+                    <p class="slot-tag">Top Player XP</p>
+                    <strong>@GetTopPickName("xp")</strong>
+                    <span>@GetTopPickValueText("xp")</span>
+                    <small>@GetTopPickLeadText("xp")</small>
+                </button>
+                <button class="hangar-top-pick-card @(IsTopPickActive("reserve-growth") ? "active" : string.Empty)" type="button" @onclick='() => ApplyTopPickMode("reserve-growth")'>
+                    <p class="slot-tag">Top Reserve Growth</p>
+                    <strong>@GetTopPickName("reserve-growth")</strong>
+                    <span>@GetTopPickValueText("reserve-growth")</span>
+                    <small>@GetTopPickLeadText("reserve-growth")</small>
+                </button>
+            </div>
+
+            <p class="fleet-forecast-note">Reserve Pilot XP is earned by your inactive pilots and raises their own pilot levels for stronger future offline output.</p>
         </section>
 
         <div class="pilot-card-grid">
-            @foreach (var slot in slots)
+            @foreach (var slot in GetOrderedSlots())
             {
                 <article class="pilot-card @(slot.Player is null ? (slot.IsUnlocked ? "open-slot" : "locked-slot") : string.Empty)" @onclick="() => HandleSlotClick(slot)">
                     <div class="pilot-card-crest">@GetSlotVisual(slot)</div>
@@ -78,8 +199,63 @@
 
                     @if (slot.Player is not null)
                     {
+                        <div class="pilot-card-badges">
+                            @if (GetPilotFocusRank(slot.Player) is int focusRank)
+                            {
+                                <span class="pilot-card-badge pilot-card-badge-focus">#@focusRank @GetPreviewFocusBadgeLabel()</span>
+                            }
+                            @if (IsBestCreditPilot(slot.Player))
+                            {
+                                <span class="pilot-card-badge">Best Credits</span>
+                            }
+                            @if (IsBestFuelPilot(slot.Player))
+                            {
+                                <span class="pilot-card-badge">Best Fuel</span>
+                            }
+                            @if (IsBestXpPilot(slot.Player))
+                            {
+                                <span class="pilot-card-badge">Best XP</span>
+                            }
+                            @if (IsBestReserveXpPilot(slot.Player))
+                            {
+                                <span class="pilot-card-badge">Best Reserve XP</span>
+                            }
+                            @if (IsBestReserveGrowthPilot(slot.Player))
+                            {
+                                <span class="pilot-card-badge pilot-card-badge-growth">Best Growth</span>
+                            }
+                            @if (IsBestNextReservePilot(slot.Player))
+                            {
+                                <span class="pilot-card-badge pilot-card-badge-soon">Next Up</span>
+                            }
+                            @if (HasProjectedReserveLevelUp(slot.Player))
+                            {
+                                <span class="pilot-card-badge pilot-card-badge-growth">Levels Up</span>
+                            }
+                            else if (IsProjectedReserveNearLevelUp(slot.Player))
+                            {
+                                <span class="pilot-card-badge pilot-card-badge-soon">Near Level-Up</span>
+                            }
+                        </div>
+                    }
+
+                    @if (slot.Player is not null)
+                    {
                         <div class="pilot-card-stats">
                             <p>@GetPilotClassLabel(slot.Player)</p>
+                            <p>@GetReserveJobLabel(slot.Player)</p>
+                            <p>@GetReserveJobSummary(slot.Player)</p>
+                            <p class="pilot-card-preview">@GetReserveJobPreview(slot.Player)</p>
+                            <p class="pilot-card-growth">@GetReserveLevelProjection(slot.Player)</p>
+                            <div class="pilot-card-growth-panel @GetReserveGrowthPanelClass(slot.Player)">
+                                <div class="pilot-card-growth-row">
+                                    <span>Reserve progress after @GetPreviewWindowShortLabel()</span>
+                                    <span>@GetProjectedReserveProgressLabel(slot.Player)</span>
+                                </div>
+                                <div class="pilot-card-growth-track">
+                                    <div class="pilot-card-growth-fill @GetReserveGrowthFillClass(slot.Player)" style="width: @GetProjectedReserveProgressPercent(slot.Player).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                                </div>
+                            </div>
                             <p>Credits: @slot.Player.Resource1</p>
                             <p>XP: @slot.Player.XP</p>
                         </div>
@@ -90,6 +266,9 @@
                             </button>
                             <button class="secondary-action-button" type="button" @onclick="() => OpenPilotAcademyAsync(slot.Player.PlayerID)">
                                 Pilot Academy
+                            </button>
+                            <button class="secondary-action-button" type="button" @onclick="() => OpenTownAsync(slot.Player.PlayerID)">
+                                Frontier Hub
                             </button>
                         </div>
                     }
@@ -130,6 +309,7 @@
                 <input class="slot-name-input modal-input"
                        placeholder="Pilot name"
                        @bind="drafts[modalSlotId].PlayerName"
+                      @onkeydown='args => HandleCreateCharacterKeyDownAsync(args, modalSlotId)'
                        maxlength="24" />
 
                 <button class="create-character-button wide-action" @onclick="() => CreateCharacterAsync(modalSlotId)">Create Character</button>
@@ -141,18 +321,40 @@
 @code {
     private const string SelectedAccountStorageKey = "nebula.selected-account-id";
     private const string SelectedPlayerStorageKey = "nebula.selected-player-id";
+    private const string AutoOptimizeHangarKey = "nebula.hangar-auto-optimize";
     private List<AccountProfile> accounts = new();
     private AccountProfile? account;
     private readonly List<CharacterSlotSummary> slots = new();
     private readonly Dictionary<int, CharacterDraft> drafts = new();
+    private readonly Dictionary<int, List<PlayerTownBuilding>> pilotTownBuildings = new();
     private string? loadError;
     private bool isCreateModalOpen;
     private int? activeCreateSlotId;
+    private int previewWindowMinutes = 60;
+    private string previewFocus = "credits";
+    private bool autoOptimizeHangar;
 
     protected override async Task OnInitializedAsync()
     {
         Status.OnResourceChanged += HandleResourceUpdate;
+        await RestoreHangarPreferencesAsync();
         await LoadSlotsAsync();
+    }
+
+    private async Task RestoreHangarPreferencesAsync()
+    {
+        try
+        {
+            var storedAutoOptimize = await JSRuntime.InvokeAsync<string?>("nebulaStorage.get", AutoOptimizeHangarKey);
+            if (bool.TryParse(storedAutoOptimize, out var autoOptimize))
+            {
+                autoOptimizeHangar = autoOptimize;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Hangar preferences could not be restored: {ex.Message}");
+        }
     }
 
     private async Task LoadSlotsAsync()
@@ -185,6 +387,7 @@
             var loadedSlots = await HttpClient.GetFromJsonAsync<List<CharacterSlotSummary>>($"api/game/account/{account.AccountProfileID}/slots") ?? new List<CharacterSlotSummary>();
             slots.Clear();
             slots.AddRange(loadedSlots.OrderBy(slot => slot.SlotId));
+            await LoadTownBuildingsAsync();
 
             foreach (var slot in slots)
             {
@@ -193,11 +396,42 @@
                     drafts[slot.SlotId] = new CharacterDraft();
                 }
             }
+
+            if (autoOptimizeHangar)
+            {
+                OptimizeReserveView();
+            }
         }
         catch (Exception ex)
         {
             slots.Clear();
+            pilotTownBuildings.Clear();
             loadError = $"Pilot data could not be loaded: {ex.Message}";
+        }
+    }
+
+    private async Task LoadTownBuildingsAsync()
+    {
+        pilotTownBuildings.Clear();
+
+        var pilots = slots.Where(slot => slot.Player is not null)
+            .Select(slot => slot.Player!)
+            .ToList();
+
+        if (pilots.Count == 0)
+        {
+            return;
+        }
+
+        var townTasks = pilots.Select(async pilot => new
+        {
+            pilot.PlayerID,
+            Buildings = await HttpClient.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{pilot.PlayerID}/town") ?? new List<PlayerTownBuilding>()
+        });
+
+        foreach (var result in await Task.WhenAll(townTasks))
+        {
+            pilotTownBuildings[result.PlayerID] = result.Buildings;
         }
     }
 
@@ -228,8 +462,23 @@
         }
     }
 
+    private async Task OpenTownAsync(int playerId)
+    {
+        if (await ActivateCharacterAsync(playerId))
+        {
+            NavManager.NavigateTo("/town");
+        }
+    }
+
     private async Task<bool> ActivateCharacterAsync(int id)
     {
+        var activeAccount = account;
+        if (activeAccount is null)
+        {
+            loadError = "Select an account first.";
+            return false;
+        }
+
         var selected = slots.FirstOrDefault(slot => slot.Player?.PlayerID == id)?.Player;
         if (selected is null)
         {
@@ -245,9 +494,11 @@
             return false;
         }
 
-        PlayerService.UpdateAccount(account);
+        PlayerService.UpdateAccount(activeAccount);
         PlayerService.UpdateFromPlayer(refreshedPlayer);
         PlayerService.SyncActivePilotPresentation();
+        await JSRuntime.InvokeVoidAsync("nebulaStorage.set", SelectedAccountStorageKey, activeAccount.AccountProfileID.ToString());
+        await JSRuntime.InvokeVoidAsync("nebulaStorage.set", SelectedPlayerStorageKey, refreshedPlayer.PlayerID.ToString());
 
         var upgrades = await HttpClient.GetFromJsonAsync<List<PlayerUpgrade>>($"api/game/player/{selected.PlayerID}/upgrades") ?? new List<PlayerUpgrade>();
         var research = await HttpClient.GetFromJsonAsync<List<PlayerResearch>>($"api/game/player/{selected.PlayerID}/research") ?? new List<PlayerResearch>();
@@ -301,6 +552,16 @@
         }
     }
 
+    private Task HandleCreateCharacterKeyDownAsync(KeyboardEventArgs args, int slotId)
+    {
+        if (args.Key == "Enter")
+        {
+            return CreateCharacterAsync(slotId);
+        }
+
+        return Task.CompletedTask;
+    }
+
     private async Task LogoutAsync()
     {
         account = null;
@@ -317,6 +578,14 @@
         public string PlayerName { get; set; } = string.Empty;
     }
 
+    private sealed class OfflinePreviewSummary
+    {
+        public int Credits { get; init; }
+        public int Fuel { get; init; }
+        public int PlayerXp { get; init; }
+        public int ReserveXp { get; init; }
+    }
+
     private static string GetPilotClassLabel(Player player)
     {
         if (string.IsNullOrWhiteSpace(player.PilotClass))
@@ -326,6 +595,1081 @@
 
         return $"Class: {player.PilotClass}";
     }
+
+    private static string GetReserveJobLabel(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return "Idle Duty: unavailable until class is locked";
+        }
+
+        return $"Idle Duty: {GetPassiveJobTitle(player.PassiveJobKey, player.PilotClass)}";
+    }
+
+    private static string GetReserveJobSummary(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return "Choose a permanent class at Level 3 to unlock reserve jobs.";
+        }
+
+        return GetPassiveJobDescription(player.PassiveJobKey, player.PilotClass);
+    }
+
+    private string GetReserveJobPreview(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return $"{GetPreviewWindowShortLabel()} preview unlocks after choosing a permanent class.";
+        }
+
+        var jobKey = GetNormalizedPassiveJobKey(player.PassiveJobKey, player.PilotClass);
+        var preview = GetPreviewSummary(player, previewWindowMinutes);
+
+        return jobKey switch
+        {
+            "hauling" => $"{GetPreviewWindowShortLabel()} preview: +{preview.Fuel} Fuel, +{preview.ReserveXp} reserve pilot XP.",
+            "reactor" => $"{GetPreviewWindowShortLabel()} preview: +{preview.PlayerXp} player XP, +{preview.ReserveXp} reserve pilot XP.",
+            _ => $"{GetPreviewWindowShortLabel()} preview: +{preview.Credits} Credits, +{preview.ReserveXp} reserve pilot XP."
+        };
+    }
+
+    private string GetReserveLevelProjection(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return "Reserve growth starts after the pilot locks a permanent class.";
+        }
+
+        var preview = GetPreviewSummary(player, previewWindowMinutes);
+        if (preview.ReserveXp <= 0)
+        {
+            return "No reserve pilot XP forecast for this pilot yet.";
+        }
+
+        var projectedLevel = Math.Max(1, player.Level);
+        var projectedXp = Math.Max(0, player.XP) + preview.ReserveXp;
+        var levelsGained = 0;
+
+        while (projectedXp >= projectedLevel * 100)
+        {
+            projectedXp -= projectedLevel * 100;
+            projectedLevel++;
+            levelsGained++;
+        }
+
+        return levelsGained > 0
+            ? $"Reserve growth: about +{levelsGained} LVL to {projectedLevel}, then {projectedXp}/{projectedLevel * 100} XP."
+            : $"Reserve growth: stays LVL {projectedLevel}, then {projectedXp}/{projectedLevel * 100} XP.";
+    }
+
+    private string GetProjectedReserveProgressLabel(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return "Locked";
+        }
+
+        var (projectedLevel, projectedXp) = GetProjectedReserveState(player);
+        return $"LVL {projectedLevel} • {projectedXp}/{projectedLevel * 100} XP";
+    }
+
+    private double GetProjectedReserveProgressPercent(Player player)
+    {
+        return GetProjectedReserveProgressPercent(player, previewWindowMinutes);
+    }
+
+    private double GetProjectedReserveProgressPercent(Player player, int previewMinutes)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return 0;
+        }
+
+        var (projectedLevel, projectedXp) = GetProjectedReserveState(player, previewMinutes);
+        return projectedLevel <= 0 ? 0 : Math.Clamp(projectedXp * 100d / (projectedLevel * 100d), 0, 100);
+    }
+
+    private void SetPreviewWindow(int minutes)
+    {
+        previewWindowMinutes = minutes;
+    }
+
+    private void SetPreviewFocus(string focus)
+    {
+        previewFocus = focus;
+    }
+
+    private string GetPreviewWindowLabel() => previewWindowMinutes switch
+    {
+        1440 => "24 hour idle preview",
+        480 => "8 hour idle preview",
+        _ => "1 hour idle preview"
+    };
+
+    private string GetPreviewWindowShortLabel() => previewWindowMinutes switch
+    {
+        1440 => "24h",
+        480 => "8h",
+        _ => "1h"
+    };
+
+    private string GetPreviewFocusLabel() => previewFocus switch
+    {
+        "fuel" => "Pilots sorted by fuel output",
+        "xp" => "Pilots sorted by player XP output",
+        "reserve-xp" => "Pilots sorted by reserve pilot XP output",
+        "next-level" => "Pilots sorted by the soonest reserve level-up",
+        _ => "Pilots sorted by credit output"
+    };
+
+    private string GetPreviewFocusBadgeLabel() => previewFocus switch
+    {
+        "fuel" => "Fuel Rank",
+        "xp" => "XP Rank",
+        "reserve-xp" => "Reserve XP Rank",
+        "next-level" => "Next Up Rank",
+        _ => "Credit Rank"
+    };
+
+    private int GetFleetPreviewCredits() => slots.Where(slot => slot.Player is not null)
+        .Sum(slot => GetPreviewSummary(slot.Player!, previewWindowMinutes).Credits);
+
+    private int GetFleetPreviewFuel() => slots.Where(slot => slot.Player is not null)
+        .Sum(slot => GetPreviewSummary(slot.Player!, previewWindowMinutes).Fuel);
+
+    private int GetFleetPreviewPlayerXp() => slots.Where(slot => slot.Player is not null)
+        .Sum(slot => GetPreviewSummary(slot.Player!, previewWindowMinutes).PlayerXp);
+
+    private int GetFleetPreviewReserveXp() => slots.Where(slot => slot.Player is not null)
+        .Sum(slot => GetPreviewSummary(slot.Player!, previewWindowMinutes).ReserveXp);
+
+    private int GetFleetProjectedReserveLevels() => slots.Where(slot => slot.Player is not null)
+        .Sum(slot => GetProjectedReserveLevelsGained(slot.Player!));
+
+    private int GetPilotsWithProjectedLevelUps() => slots.Where(slot => slot.Player is not null)
+        .Count(slot => HasProjectedReserveLevelUp(slot.Player!));
+
+    private string GetReserveRecommendationTitle()
+    {
+        var bestGrowthPilot = GetBestReserveGrowthPilot();
+        if (bestGrowthPilot is not null)
+        {
+            return $"Best offline trainer right now: {bestGrowthPilot.PlayerName}";
+        }
+
+        var nextPilot = GetBestNextReservePilot();
+        return nextPilot is not null
+            ? $"Closest next reserve level: {nextPilot.PlayerName}"
+            : "Build up reserve jobs to grow your offline roster";
+    }
+
+    private string GetReserveRecommendationText()
+    {
+        var bestGrowthPilot = GetBestReserveGrowthPilot();
+        if (bestGrowthPilot is not null)
+        {
+            var levels = GetProjectedReserveLevelsGained(bestGrowthPilot);
+            return $"In {GetPreviewWindowShortLabel()} this pilot is forecast to gain about +{levels} reserve level{(levels == 1 ? string.Empty : "s")}. Keep their reserve route active if you want faster roster scaling.";
+        }
+
+        var nextPilot = GetBestNextReservePilot();
+        if (nextPilot is not null)
+        {
+            return $"{nextPilot.PlayerName} is closest to the next reserve level-up in {GetPreviewWindowShortLabel()}. A longer offline window or stronger town upgrades should push them over the line.";
+        }
+
+        return "No pilot is currently forecast to gain reserve levels. Upgrade Survey Office, Freight Depot, or Reactor Annex to improve offline growth.";
+    }
+
+    private string GetTopPickName(string mode)
+    {
+        var pilot = GetTopPickPilot(mode);
+        return pilot?.PlayerName ?? "No pilot ready";
+    }
+
+    private string GetTopPickValueText(string mode)
+    {
+        var pilot = GetTopPickPilot(mode);
+        if (pilot is null)
+        {
+            return "Needs a classed pilot";
+        }
+
+        var preview = GetPreviewSummary(pilot, previewWindowMinutes);
+        return mode switch
+        {
+            "fuel" => $"+{preview.Fuel} Fuel in {GetPreviewWindowShortLabel()}",
+            "xp" => $"+{preview.PlayerXp} Player XP in {GetPreviewWindowShortLabel()}",
+            "reserve-growth" => GetProjectedReserveLevelsGained(pilot) > 0
+                ? $"+{GetProjectedReserveLevelsGained(pilot)} LVL in {GetPreviewWindowShortLabel()}"
+                : $"{GetProjectedReserveProgressLabel(pilot)}",
+            _ => $"+{preview.Credits} Credits in {GetPreviewWindowShortLabel()}"
+        };
+    }
+
+    private string GetTopPickLeadText(string mode)
+    {
+        var rankedPilots = GetTopPickOrderedPilots(mode).Take(2).ToList();
+        if (rankedPilots.Count == 0)
+        {
+            return "No classed pilots ready";
+        }
+
+        if (rankedPilots.Count == 1)
+        {
+            return "Only active specialist in this category";
+        }
+
+        var leader = rankedPilots[0];
+        var runnerUp = rankedPilots[1];
+
+        return mode switch
+        {
+            "fuel" => $"Lead margin: +{Math.Max(0, GetPreviewSummary(leader, previewWindowMinutes).Fuel - GetPreviewSummary(runnerUp, previewWindowMinutes).Fuel)} Fuel vs {runnerUp.PlayerName}",
+            "xp" => $"Lead margin: +{Math.Max(0, GetPreviewSummary(leader, previewWindowMinutes).PlayerXp - GetPreviewSummary(runnerUp, previewWindowMinutes).PlayerXp)} XP vs {runnerUp.PlayerName}",
+            "reserve-growth" => BuildReserveGrowthLeadText(leader, runnerUp),
+            _ => $"Lead margin: +{Math.Max(0, GetPreviewSummary(leader, previewWindowMinutes).Credits - GetPreviewSummary(runnerUp, previewWindowMinutes).Credits)} Credits vs {runnerUp.PlayerName}"
+        };
+    }
+
+    private Player? GetTopPickPilot(string mode)
+    {
+        return GetTopPickOrderedPilots(mode).FirstOrDefault();
+    }
+
+    private IEnumerable<Player> GetTopPickOrderedPilots(string mode)
+    {
+        var pilots = slots.Where(slot => slot.Player is not null)
+            .Select(slot => slot.Player!)
+            .Where(player => !string.IsNullOrWhiteSpace(player.PilotClass));
+
+        return mode switch
+        {
+            "fuel" => pilots.OrderByDescending(player => GetPreviewSummary(player, previewWindowMinutes).Fuel).ThenBy(player => player.PlayerName),
+            "xp" => pilots.OrderByDescending(player => GetPreviewSummary(player, previewWindowMinutes).PlayerXp).ThenBy(player => player.PlayerName),
+            "reserve-growth" => pilots.OrderByDescending(GetProjectedReserveLevelsGained).ThenByDescending(GetProjectedReservePriorityScore).ThenBy(player => player.PlayerName),
+            _ => pilots.OrderByDescending(player => GetPreviewSummary(player, previewWindowMinutes).Credits).ThenBy(player => player.PlayerName)
+        };
+    }
+
+    private string BuildReserveGrowthLeadText(Player leader, Player runnerUp)
+    {
+        var leaderLevels = GetProjectedReserveLevelsGained(leader);
+        var runnerLevels = GetProjectedReserveLevelsGained(runnerUp);
+        if (leaderLevels != runnerLevels)
+        {
+            return $"Lead margin: +{Math.Max(0, leaderLevels - runnerLevels)} LVL vs {runnerUp.PlayerName}";
+        }
+
+        var leaderProgress = GetProjectedReserveProgressPercent(leader);
+        var runnerProgress = GetProjectedReserveProgressPercent(runnerUp);
+        return $"Lead margin: {(leaderProgress - runnerProgress).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}% closer than {runnerUp.PlayerName}";
+    }
+
+    private string GetAllRoundPickName()
+    {
+        var pilot = GetAllRoundPilot();
+        return pilot?.PlayerName ?? "No pilot ready";
+    }
+
+    private string GetAllRoundPickHeadline()
+    {
+        var pilot = GetAllRoundPilot();
+        if (pilot is null)
+        {
+            return "Assign a classed pilot to compare offline strengths.";
+        }
+
+        return $"Strongest combined offline value in {GetPreviewWindowShortLabel()}";
+    }
+
+    private string GetAllRoundPickReason()
+    {
+        var pilot = GetAllRoundPilot();
+        if (pilot is null)
+        {
+            return "Needs a classed pilot.";
+        }
+
+        var dominantMode = GetDominantPilotMode(pilot);
+        var dominantText = dominantMode switch
+        {
+            "fuel" => $"leads fuel with +{GetPreviewSummary(pilot, previewWindowMinutes).Fuel}",
+            "xp" => $"leads player XP with +{GetPreviewSummary(pilot, previewWindowMinutes).PlayerXp}",
+            "reserve-growth" => GetProjectedReserveLevelsGained(pilot) > 0
+                ? $"pushes reserve growth by +{GetProjectedReserveLevelsGained(pilot)} LVL"
+                : $"is closest to the next reserve level with {GetProjectedReserveProgressLabel(pilot)}",
+            _ => $"leads credits with +{GetPreviewSummary(pilot, previewWindowMinutes).Credits}"
+        };
+
+        return $"Best overall mix right now and {dominantText}.";
+    }
+
+    private string GetAllRoundTimeShiftNote()
+    {
+        var currentPilot = GetAllRoundPilot();
+        if (currentPilot is null)
+        {
+            return "Time shift: no all-round forecast yet";
+        }
+
+        var oneHourPilot = GetAllRoundPilot(60);
+        var eightHourPilot = GetAllRoundPilot(480);
+        var dayPilot = GetAllRoundPilot(1440);
+
+        var sameAcrossWindows = oneHourPilot?.PlayerID == currentPilot.PlayerID
+            && eightHourPilot?.PlayerID == currentPilot.PlayerID
+            && dayPilot?.PlayerID == currentPilot.PlayerID;
+
+        if (sameAcrossWindows)
+        {
+            return "Time shift: stays strongest from 1h to 24h";
+        }
+
+        var changes = new List<string>();
+        if (oneHourPilot is not null && oneHourPilot.PlayerID != currentPilot.PlayerID)
+        {
+            changes.Add($"1h favors {oneHourPilot.PlayerName}");
+        }
+
+        if (eightHourPilot is not null && eightHourPilot.PlayerID != currentPilot.PlayerID)
+        {
+            changes.Add($"8h favors {eightHourPilot.PlayerName}");
+        }
+
+        if (dayPilot is not null && dayPilot.PlayerID != currentPilot.PlayerID)
+        {
+            changes.Add($"24h favors {dayPilot.PlayerName}");
+        }
+
+        return changes.Count == 0
+            ? "Time shift: current window is the main differentiator"
+            : $"Time shift: {string.Join(" | ", changes)}";
+    }
+
+    private Player? GetAllRoundPilot()
+    {
+        return GetAllRoundPilot(previewWindowMinutes);
+    }
+
+    private Player? GetAllRoundPilot(int previewMinutes)
+    {
+        return slots.Where(slot => slot.Player is not null)
+            .Select(slot => slot.Player!)
+            .Where(player => !string.IsNullOrWhiteSpace(player.PilotClass))
+            .OrderByDescending(player => GetAllRoundPilotScore(player, previewMinutes))
+            .ThenByDescending(pilot => pilot.Level)
+            .ThenBy(pilot => pilot.PlayerName)
+            .FirstOrDefault();
+    }
+
+    private double GetAllRoundPilotScore(Player player)
+    {
+        return GetAllRoundPilotScore(player, previewWindowMinutes);
+    }
+
+    private double GetAllRoundPilotScore(Player player, int previewMinutes)
+    {
+        var preview = GetPreviewSummary(player, previewMinutes);
+        var maxCredits = Math.Max(1, slots.Where(slot => slot.Player is not null).Select(slot => GetPreviewSummary(slot.Player!, previewMinutes).Credits).DefaultIfEmpty().Max());
+        var maxFuel = Math.Max(1, slots.Where(slot => slot.Player is not null).Select(slot => GetPreviewSummary(slot.Player!, previewMinutes).Fuel).DefaultIfEmpty().Max());
+        var maxPlayerXp = Math.Max(1, slots.Where(slot => slot.Player is not null).Select(slot => GetPreviewSummary(slot.Player!, previewMinutes).PlayerXp).DefaultIfEmpty().Max());
+        var maxReserveXp = Math.Max(1, slots.Where(slot => slot.Player is not null).Select(slot => GetPreviewSummary(slot.Player!, previewMinutes).ReserveXp).DefaultIfEmpty().Max());
+        var maxReserveGrowth = Math.Max(1, slots.Where(slot => slot.Player is not null).Select(slot => GetProjectedReserveLevelsGained(slot.Player!, previewMinutes)).DefaultIfEmpty().Max());
+        var reservePriorityMax = Math.Max(1, slots.Where(slot => slot.Player is not null).Select(slot => GetProjectedReservePriorityScore(slot.Player!, previewMinutes)).DefaultIfEmpty().Max());
+
+        var reserveGrowthScore = GetProjectedReserveLevelsGained(player, previewMinutes) > 0
+            ? (double)GetProjectedReserveLevelsGained(player, previewMinutes) / maxReserveGrowth
+            : 0.45d * GetProjectedReservePriorityScore(player, previewMinutes) / reservePriorityMax;
+
+        return (double)preview.Credits / maxCredits
+            + (double)preview.Fuel / maxFuel
+            + (double)preview.PlayerXp / maxPlayerXp
+            + 0.65d * preview.ReserveXp / maxReserveXp
+            + 1.35d * reserveGrowthScore;
+    }
+
+    private string GetDominantPilotMode(Player player)
+    {
+        var preview = GetPreviewSummary(player, previewWindowMinutes);
+        var creditLead = preview.Credits;
+        var fuelLead = preview.Fuel;
+        var xpLead = preview.PlayerXp;
+        var reserveGrowthLead = GetProjectedReserveLevelsGained(player) > 0
+            ? GetProjectedReserveLevelsGained(player) * 1000
+            : GetProjectedReservePriorityScore(player);
+
+        if (reserveGrowthLead >= creditLead && reserveGrowthLead >= fuelLead && reserveGrowthLead >= xpLead)
+        {
+            return "reserve-growth";
+        }
+
+        if (fuelLead >= creditLead && fuelLead >= xpLead)
+        {
+            return "fuel";
+        }
+
+        return xpLead > creditLead ? "xp" : "credits";
+    }
+
+    private void ApplyAllRoundRecommendation()
+    {
+        var pilot = GetAllRoundPilot();
+        if (pilot is null)
+        {
+            previewFocus = "credits";
+            return;
+        }
+
+        ApplyTopPickMode(GetDominantPilotMode(pilot));
+    }
+
+    private bool IsAllRoundPickActive()
+    {
+        var pilot = GetAllRoundPilot();
+        return pilot is not null && IsTopPickActive(GetDominantPilotMode(pilot));
+    }
+
+    private string GetWeakSpotTitle()
+    {
+        return GetWeakSpotMode() switch
+        {
+            "fuel" => "Fleet Fuel is lagging",
+            "xp" => "Fleet Player XP is lagging",
+            "reserve-growth" => "Reserve growth is lagging",
+            _ => "Fleet Credits are lagging"
+        };
+    }
+
+    private string GetWeakSpotHeadline()
+    {
+        return GetWeakSpotMode() switch
+        {
+            "fuel" => $"Lowest fleet depth for {GetPreviewWindowShortLabel()} fuel output",
+            "xp" => $"Lowest fleet depth for {GetPreviewWindowShortLabel()} player XP output",
+            "reserve-growth" => $"Lowest fleet depth for reserve progression in {GetPreviewWindowShortLabel()}",
+            _ => $"Lowest fleet depth for {GetPreviewWindowShortLabel()} credit output"
+        };
+    }
+
+    private string GetWeakSpotReason()
+    {
+        var mode = GetWeakSpotMode();
+        var pilot = GetWeakSpotFixer();
+        if (pilot is null)
+        {
+            return "Assign a classed pilot first to compare fleet gaps.";
+        }
+
+        return mode switch
+        {
+            "fuel" => $"{pilot.PlayerName} is your best fuel pilot, so fuel focus shows who else is still behind.",
+            "xp" => $"{pilot.PlayerName} leads XP, so XP focus reveals which pilots are dragging the fleet average down.",
+            "reserve-growth" => GetProjectedReserveLevelsGained(pilot) > 0
+                ? $"{pilot.PlayerName} can already add +{GetProjectedReserveLevelsGained(pilot)} reserve level{(GetProjectedReserveLevelsGained(pilot) == 1 ? string.Empty : "s")}; the rest of the roster trails that pace."
+                : $"No pilot is breaking through reserve levels yet. Use the reserve focus to see who is closest.",
+            _ => $"{pilot.PlayerName} carries your best credit route, so credit focus shows where the rest of the fleet falls short."
+        };
+    }
+
+    private string GetWeakSpotFixerLabel()
+    {
+        var mode = GetWeakSpotMode();
+        var pilot = GetWeakSpotFixer();
+        if (pilot is null)
+        {
+            return "Best fixer: no pilot ready";
+        }
+
+        var valueText = mode switch
+        {
+            "fuel" => $"+{GetPreviewSummary(pilot, previewWindowMinutes).Fuel} Fuel",
+            "xp" => $"+{GetPreviewSummary(pilot, previewWindowMinutes).PlayerXp} Player XP",
+            "reserve-growth" => GetProjectedReserveLevelsGained(pilot) > 0
+                ? $"+{GetProjectedReserveLevelsGained(pilot)} LVL"
+                : GetProjectedReserveProgressLabel(pilot),
+            _ => $"+{GetPreviewSummary(pilot, previewWindowMinutes).Credits} Credits"
+        };
+
+        return $"Best fixer: {pilot.PlayerName} ({valueText})";
+    }
+
+    private Player? GetWeakSpotFixer()
+    {
+        return GetTopPickPilot(GetWeakSpotMode());
+    }
+
+    private string GetWeakSpotMode()
+    {
+        var creditsCoverage = GetFleetCoverageScore("credits");
+        var fuelCoverage = GetFleetCoverageScore("fuel");
+        var xpCoverage = GetFleetCoverageScore("xp");
+        var reserveCoverage = GetFleetCoverageScore("reserve-growth");
+        var weakestCoverage = Math.Min(Math.Min(creditsCoverage, fuelCoverage), Math.Min(xpCoverage, reserveCoverage));
+
+        if (reserveCoverage == weakestCoverage)
+        {
+            return "reserve-growth";
+        }
+
+        if (xpCoverage == weakestCoverage)
+        {
+            return "xp";
+        }
+
+        if (fuelCoverage == weakestCoverage)
+        {
+            return "fuel";
+        }
+
+        return "credits";
+    }
+
+    private double GetFleetCoverageScore(string mode)
+    {
+        var classedPilotCount = Math.Max(1, slots.Count(slot => slot.Player is not null && !string.IsNullOrWhiteSpace(slot.Player.PilotClass)));
+        var topPilot = GetTopPickPilot(mode);
+        if (topPilot is null)
+        {
+            return 0;
+        }
+
+        return mode switch
+        {
+            "fuel" => (double)GetFleetPreviewFuel() / Math.Max(1, GetPreviewSummary(topPilot, previewWindowMinutes).Fuel * classedPilotCount),
+            "xp" => (double)GetFleetPreviewPlayerXp() / Math.Max(1, GetPreviewSummary(topPilot, previewWindowMinutes).PlayerXp * classedPilotCount),
+            "reserve-growth" => GetFleetProjectedReserveLevels() > 0
+                ? (double)GetFleetProjectedReserveLevels() / Math.Max(1, GetProjectedReserveLevelsGained(topPilot) * classedPilotCount)
+                : (double)slots.Where(slot => slot.Player is not null).Sum(slot => GetProjectedReservePriorityScore(slot.Player!)) / Math.Max(1, GetProjectedReservePriorityScore(topPilot) * classedPilotCount),
+            _ => (double)GetFleetPreviewCredits() / Math.Max(1, GetPreviewSummary(topPilot, previewWindowMinutes).Credits * classedPilotCount)
+        };
+    }
+
+    private void ApplyWeakSpotFocus()
+    {
+        ApplyTopPickMode(GetWeakSpotMode());
+    }
+
+    private bool IsWeakSpotActive()
+    {
+        return IsTopPickActive(GetWeakSpotMode());
+    }
+
+    private void ApplyTopPickMode(string mode)
+    {
+        previewFocus = mode switch
+        {
+            "fuel" => "fuel",
+            "xp" => "xp",
+            "reserve-growth" => GetPilotsWithProjectedLevelUps() > 0 ? "next-level" : "reserve-xp",
+            _ => "credits"
+        };
+    }
+
+    private bool IsTopPickActive(string mode)
+    {
+        return mode switch
+        {
+            "fuel" => previewFocus == "fuel",
+            "xp" => previewFocus == "xp",
+            "reserve-growth" => previewFocus is "reserve-xp" or "next-level",
+            _ => previewFocus == "credits"
+        };
+    }
+
+    private string GetReserveRecommendationActionLabel()
+    {
+        if (GetPilotsWithProjectedLevelUps() > 0)
+        {
+            return "Focus Next Level";
+        }
+
+        return previewWindowMinutes < 1440
+            ? "Try 24h Reserve View"
+            : "Focus Reserve XP";
+    }
+
+    private bool ShouldShowSetupCard()
+    {
+        return slots.Any(slot => slot.Player is not null) && !slots.Any(slot => slot.Player is not null && !string.IsNullOrWhiteSpace(slot.Player.PilotClass));
+    }
+
+    private string GetSetupCardTitle()
+    {
+        var setupPilot = GetSetupPilot();
+        if (setupPilot is null)
+        {
+            return "Create your first pilot";
+        }
+
+        return string.IsNullOrWhiteSpace(setupPilot.PilotClass) && setupPilot.Level >= 3
+            ? $"Lock a class for {setupPilot.PlayerName}"
+            : $"Push {setupPilot.PlayerName} toward Level 3";
+    }
+
+    private string GetSetupCardText()
+    {
+        var setupPilot = GetSetupPilot();
+        if (setupPilot is null)
+        {
+            return "Your offline rankings stay empty until you create a pilot. Start with Slot 1, then come back once the first cadet is online.";
+        }
+
+        if (setupPilot.Level >= 3)
+        {
+            return $"{setupPilot.PlayerName} is ready for Pilot Academy. Choosing a permanent class unlocks reserve jobs, offline previews, and the real hangar comparisons.";
+        }
+
+        var xpToNext = Math.Max(0, (setupPilot.Level * 100) - setupPilot.XP);
+        return $"{setupPilot.PlayerName} is still classless at LVL {setupPilot.Level}. Keep running Command Nexus or Asteroid Belt until LVL 3 unlocks Pilot Academy. Next level is {xpToNext} XP away.";
+    }
+
+    private string GetSetupCardActionLabel()
+    {
+        var setupPilot = GetSetupPilot();
+        if (setupPilot is null)
+        {
+            return "Open Slot 1";
+        }
+
+        return setupPilot.Level >= 3
+            ? "Open Pilot Academy"
+            : "Enter Pilot";
+    }
+
+    private Player? GetSetupPilot()
+    {
+        return slots.Where(slot => slot.Player is not null)
+            .Select(slot => slot.Player!)
+            .Where(player => string.IsNullOrWhiteSpace(player.PilotClass))
+            .OrderByDescending(player => player.Level >= 3)
+            .ThenByDescending(player => player.Level)
+            .ThenByDescending(player => player.XP)
+            .ThenBy(player => player.PlayerName)
+            .FirstOrDefault();
+    }
+
+    private async Task RunSetupActionAsync()
+    {
+        var setupPilot = GetSetupPilot();
+        if (setupPilot is null)
+        {
+            OpenCreateCharacterModal(1);
+            return;
+        }
+
+        if (setupPilot.Level >= 3)
+        {
+            await OpenPilotAcademyAsync(setupPilot.PlayerID);
+            return;
+        }
+
+        await EnterCharacterAsync(setupPilot.PlayerID);
+    }
+
+    private void OptimizeReserveView()
+    {
+        if (GetPilotsWithProjectedLevelUps() > 0)
+        {
+            previewFocus = "next-level";
+            return;
+        }
+
+        if (previewWindowMinutes < 1440)
+        {
+            previewWindowMinutes = 1440;
+            previewFocus = "next-level";
+            return;
+        }
+
+        previewFocus = "reserve-xp";
+    }
+
+    private async Task ToggleAutoOptimizeHangarAsync(ChangeEventArgs args)
+    {
+        autoOptimizeHangar = args.Value switch
+        {
+            bool boolValue => boolValue,
+            string stringValue when bool.TryParse(stringValue, out var parsed) => parsed,
+            _ => false
+        };
+
+        await JSRuntime.InvokeVoidAsync("nebulaStorage.set", AutoOptimizeHangarKey, autoOptimizeHangar.ToString().ToLowerInvariant());
+
+        if (autoOptimizeHangar)
+        {
+            OptimizeReserveView();
+        }
+    }
+
+    private IEnumerable<CharacterSlotSummary> GetOrderedSlots()
+    {
+        return slots
+            .OrderBy(slot => slot.Player is null ? 1 : 0)
+            .ThenByDescending(slot => slot.Player is not null ? GetCurrentFocusValue(slot.Player) : int.MinValue)
+            .ThenBy(slot => slot.Player is null ? (slot.IsUnlocked ? 0 : 1) : 0)
+            .ThenBy(slot => slot.SlotId);
+    }
+
+    private int? GetPilotFocusRank(Player player)
+    {
+        var rankedPlayers = slots.Where(slot => slot.Player is not null)
+            .Select(slot => slot.Player!)
+            .OrderByDescending(GetCurrentFocusValue)
+            .ThenByDescending(pilot => pilot.Level)
+            .ThenBy(pilot => pilot.PlayerName)
+            .ToList();
+
+        var playerValue = GetCurrentFocusValue(player);
+        if (playerValue <= 0)
+        {
+            return null;
+        }
+
+        var index = rankedPlayers.FindIndex(pilot => pilot.PlayerID == player.PlayerID);
+        return index >= 0 ? index + 1 : null;
+    }
+
+    private int GetCurrentFocusValue(Player player)
+    {
+        var preview = GetPreviewSummary(player, previewWindowMinutes);
+        return previewFocus switch
+        {
+            "fuel" => preview.Fuel,
+            "xp" => preview.PlayerXp,
+            "reserve-xp" => preview.ReserveXp,
+            "next-level" => GetProjectedReservePriorityScore(player),
+            _ => preview.Credits
+        };
+    }
+
+    private static string GetPassiveJobTitle(string? passiveJobKey, string? pilotClass)
+    {
+        var normalizedKey = GetNormalizedPassiveJobKey(passiveJobKey, pilotClass);
+
+        return normalizedKey switch
+        {
+            "hauling" => "Freight Convoy",
+            "reactor" => "Reactor Drill",
+            _ => "Survey Sweep"
+        };
+    }
+
+    private static string GetPassiveJobDescription(string? passiveJobKey, string? pilotClass)
+    {
+        var normalizedKey = GetNormalizedPassiveJobKey(passiveJobKey, pilotClass);
+
+        return normalizedKey switch
+        {
+            "hauling" => "Fuel-focused offline route. Improves with logistics skill and Freight Depot.",
+            "reactor" => "XP-focused offline drill. Improves with reactor skill and Reactor Annex.",
+            _ => "Credit-focused offline sweep. Improves with mining skill and Survey Office."
+        };
+    }
+
+    private int GetBuildingLevel(int playerId, string jobKey)
+    {
+        if (!pilotTownBuildings.TryGetValue(playerId, out var buildings))
+        {
+            return 0;
+        }
+
+        var buildingKey = jobKey switch
+        {
+            "hauling" => "freight-depot",
+            "reactor" => "reactor-annex",
+            _ => "survey-office"
+        };
+
+        return buildings.FirstOrDefault(building => string.Equals(building.BuildingKey, buildingKey, StringComparison.OrdinalIgnoreCase))?.Level ?? 0;
+    }
+
+    private OfflinePreviewSummary GetPreviewSummary(Player player, int previewMinutes)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return new OfflinePreviewSummary();
+        }
+
+        var jobKey = GetNormalizedPassiveJobKey(player.PassiveJobKey, player.PilotClass);
+        var buildingLevel = GetBuildingLevel(player.PlayerID, jobKey);
+
+        return jobKey switch
+        {
+            "hauling" => BuildHaulingPreview(player, previewMinutes, buildingLevel),
+            "reactor" => BuildReactorPreview(player, previewMinutes, buildingLevel),
+            _ => BuildSurveyPreview(player, previewMinutes, buildingLevel)
+        };
+    }
+
+    private bool IsBestCreditPilot(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return false;
+        }
+
+        var maxCredits = slots.Where(slot => slot.Player is not null)
+            .Select(slot => GetPreviewSummary(slot.Player!, previewWindowMinutes).Credits)
+            .DefaultIfEmpty()
+            .Max();
+
+        var playerCredits = GetPreviewSummary(player, previewWindowMinutes).Credits;
+        return playerCredits > 0 && playerCredits == maxCredits;
+    }
+
+    private bool IsBestFuelPilot(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return false;
+        }
+
+        var maxFuel = slots.Where(slot => slot.Player is not null)
+            .Select(slot => GetPreviewSummary(slot.Player!, previewWindowMinutes).Fuel)
+            .DefaultIfEmpty()
+            .Max();
+
+        var playerFuel = GetPreviewSummary(player, previewWindowMinutes).Fuel;
+        return playerFuel > 0 && playerFuel == maxFuel;
+    }
+
+    private bool IsBestXpPilot(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return false;
+        }
+
+        var maxPlayerXp = slots.Where(slot => slot.Player is not null)
+            .Select(slot => GetPreviewSummary(slot.Player!, previewWindowMinutes).PlayerXp)
+            .DefaultIfEmpty()
+            .Max();
+
+        var playerXp = GetPreviewSummary(player, previewWindowMinutes).PlayerXp;
+        return playerXp > 0 && playerXp == maxPlayerXp;
+    }
+
+    private bool IsBestReserveXpPilot(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return false;
+        }
+
+        var maxReserveXp = slots.Where(slot => slot.Player is not null)
+            .Select(slot => GetPreviewSummary(slot.Player!, previewWindowMinutes).ReserveXp)
+            .DefaultIfEmpty()
+            .Max();
+
+        var reserveXp = GetPreviewSummary(player, previewWindowMinutes).ReserveXp;
+        return reserveXp > 0 && reserveXp == maxReserveXp;
+    }
+
+    private bool IsBestReserveGrowthPilot(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return false;
+        }
+
+        var maxLevels = slots.Where(slot => slot.Player is not null)
+            .Select(slot => GetProjectedReserveLevelsGained(slot.Player!))
+            .DefaultIfEmpty()
+            .Max();
+
+        var projectedLevels = GetProjectedReserveLevelsGained(player);
+        return projectedLevels > 0 && projectedLevels == maxLevels;
+    }
+
+    private Player? GetBestReserveGrowthPilot()
+    {
+        return slots.Where(slot => slot.Player is not null)
+            .Select(slot => slot.Player!)
+            .Where(player => GetProjectedReserveLevelsGained(player) > 0)
+            .OrderByDescending(GetProjectedReserveLevelsGained)
+            .ThenByDescending(GetProjectedReservePriorityScore)
+            .ThenBy(player => player.PlayerName)
+            .FirstOrDefault();
+    }
+
+    private Player? GetBestNextReservePilot()
+    {
+        return slots.Where(slot => slot.Player is not null)
+            .Select(slot => slot.Player!)
+            .Where(player => !string.IsNullOrWhiteSpace(player.PilotClass))
+            .OrderByDescending(GetProjectedReservePriorityScore)
+            .ThenBy(player => player.PlayerName)
+            .FirstOrDefault();
+    }
+
+    private bool IsBestNextReservePilot(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return false;
+        }
+
+        var maxPriority = slots.Where(slot => slot.Player is not null)
+            .Select(slot => GetProjectedReservePriorityScore(slot.Player!))
+            .DefaultIfEmpty()
+            .Max();
+
+        var priority = GetProjectedReservePriorityScore(player);
+        return priority > 0 && priority == maxPriority;
+    }
+
+    private bool HasProjectedReserveLevelUp(Player player) => GetProjectedReserveLevelsGained(player) > 0;
+
+    private bool IsProjectedReserveNearLevelUp(Player player)
+    {
+        return !HasProjectedReserveLevelUp(player) && GetProjectedReserveProgressPercent(player) >= 85;
+    }
+
+    private string GetReserveGrowthPanelClass(Player player)
+    {
+        if (HasProjectedReserveLevelUp(player))
+        {
+            return "growth-hit";
+        }
+
+        return IsProjectedReserveNearLevelUp(player) ? "growth-soon" : string.Empty;
+    }
+
+    private string GetReserveGrowthFillClass(Player player)
+    {
+        if (HasProjectedReserveLevelUp(player))
+        {
+            return "growth-hit";
+        }
+
+        return IsProjectedReserveNearLevelUp(player) ? "growth-soon" : string.Empty;
+    }
+
+    private int GetProjectedReserveLevelsGained(Player player)
+    {
+        return GetProjectedReserveLevelsGained(player, previewWindowMinutes);
+    }
+
+    private int GetProjectedReserveLevelsGained(Player player, int previewMinutes)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return 0;
+        }
+
+        var preview = GetPreviewSummary(player, previewMinutes);
+        if (preview.ReserveXp <= 0)
+        {
+            return 0;
+        }
+
+        var projectedLevel = Math.Max(1, player.Level);
+        var projectedXp = Math.Max(0, player.XP) + preview.ReserveXp;
+        var levelsGained = 0;
+
+        while (projectedXp >= projectedLevel * 100)
+        {
+            projectedXp -= projectedLevel * 100;
+            projectedLevel++;
+            levelsGained++;
+        }
+
+        return levelsGained;
+    }
+
+    private int GetProjectedReservePriorityScore(Player player)
+    {
+        return GetProjectedReservePriorityScore(player, previewWindowMinutes);
+    }
+
+    private int GetProjectedReservePriorityScore(Player player, int previewMinutes)
+    {
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return 0;
+        }
+
+        var levelsGained = GetProjectedReserveLevelsGained(player, previewMinutes);
+        var progressPercent = (int)Math.Round(GetProjectedReserveProgressPercent(player, previewMinutes) * 10, MidpointRounding.AwayFromZero);
+        return (levelsGained * 10000) + progressPercent;
+    }
+
+    private (int Level, int Xp) GetProjectedReserveState(Player player)
+    {
+        return GetProjectedReserveState(player, previewWindowMinutes);
+    }
+
+    private (int Level, int Xp) GetProjectedReserveState(Player player, int previewMinutes)
+    {
+        var projectedLevel = Math.Max(1, player.Level);
+        var projectedXp = Math.Max(0, player.XP);
+
+        if (string.IsNullOrWhiteSpace(player.PilotClass))
+        {
+            return (projectedLevel, projectedXp);
+        }
+
+        var preview = GetPreviewSummary(player, previewMinutes);
+        projectedXp += preview.ReserveXp;
+
+        while (projectedXp >= projectedLevel * 100)
+        {
+            projectedXp -= projectedLevel * 100;
+            projectedLevel++;
+        }
+
+        return (projectedLevel, projectedXp);
+    }
+
+    private static OfflinePreviewSummary BuildSurveyPreview(Player player, int previewMinutes, int buildingLevel)
+    {
+        var creditsPerMinute = 5 + player.Level + (player.MiningSkillLevel * 2) + (player.MiningTreeLevel * 4) + (buildingLevel * 3);
+        var credits = previewMinutes * creditsPerMinute;
+        var reserveXp = Math.Max(1, previewMinutes / 20) * (1 + player.MiningSkillLevel + player.MiningTreeLevel + buildingLevel);
+        return new OfflinePreviewSummary
+        {
+            Credits = credits,
+            ReserveXp = reserveXp
+        };
+    }
+
+    private static OfflinePreviewSummary BuildHaulingPreview(Player player, int previewMinutes, int buildingLevel)
+    {
+        var convoyCycles = Math.Max(1, previewMinutes / 18);
+        var fuelPerCycle = 1 + (player.Level / 3) + player.LogisticsSkillLevel + (player.LogisticsTreeLevel * 2) + buildingLevel;
+        var fuel = convoyCycles * fuelPerCycle;
+        var reserveXp = Math.Max(1, previewMinutes / 25) * (1 + player.LogisticsSkillLevel + player.LogisticsTreeLevel + buildingLevel);
+        return new OfflinePreviewSummary
+        {
+            Fuel = fuel,
+            ReserveXp = reserveXp
+        };
+    }
+
+    private static OfflinePreviewSummary BuildReactorPreview(Player player, int previewMinutes, int buildingLevel)
+    {
+        var drillCycles = Math.Max(1, previewMinutes / 12);
+        var playerXp = drillCycles * (1 + (player.Level / 2) + player.ReactorSkillLevel + (player.ReactorTreeLevel * 2) + (buildingLevel * 2));
+        var reserveXp = playerXp + (drillCycles * (1 + player.ReactorSkillLevel + buildingLevel));
+        return new OfflinePreviewSummary
+        {
+            PlayerXp = playerXp,
+            ReserveXp = reserveXp
+        };
+    }
+
+    private static string GetNormalizedPassiveJobKey(string? passiveJobKey, string? pilotClass) => string.IsNullOrWhiteSpace(passiveJobKey)
+        ? GetDefaultPassiveJobKey(pilotClass)
+        : passiveJobKey.Trim().ToLowerInvariant();
+
+    private static string GetDefaultPassiveJobKey(string? pilotClass) => (pilotClass ?? string.Empty).Trim() switch
+    {
+        "Quartermaster" => "hauling",
+        "Vanguard" => "reactor",
+        _ => "survey"
+    };
 
     private void HandleSlotClick(CharacterSlotSummary slot)
     {
@@ -383,6 +1727,38 @@
     .account-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 18px; }
     .account-meta-pill { padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(143, 220, 255, 0.2); background: rgba(255,255,255,0.04); display: grid; gap: 5px; }
     .account-meta-pill span { color: rgba(255,255,255,0.74); font-size: 0.82rem; }
+    .hangar-preview-toolbar { margin-top: 18px; padding: 14px 16px; border-radius: 16px; border: 1px solid rgba(143, 220, 255, 0.16); background: rgba(255,255,255,0.03); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .hangar-preview-toolbar strong { display: block; font-size: 1rem; color: #f5efe4; }
+    .hangar-focus-toolbar { margin-top: 12px; padding: 14px 16px; border-radius: 16px; border: 1px solid rgba(143, 220, 255, 0.12); background: rgba(255,255,255,0.025); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .hangar-focus-toolbar strong { display: block; font-size: 1rem; color: #f5efe4; }
+    .hangar-preview-switches { display: flex; flex-wrap: wrap; gap: 10px; }
+    .preview-window-button { border: 1px solid rgba(143, 220, 255, 0.2); background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.86); border-radius: 999px; padding: 10px 14px; font-weight: 700; }
+    .preview-window-button.active { background: linear-gradient(90deg, rgba(241, 196, 106, 0.22), rgba(240, 139, 82, 0.16)); border-color: rgba(241, 196, 106, 0.45); color: #f9d487; }
+    .fleet-forecast-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+    .fleet-forecast-pill { padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(143, 220, 255, 0.16); background: rgba(255,255,255,0.03); display: grid; gap: 5px; }
+    .fleet-forecast-pill strong { color: #f5efe4; }
+    .fleet-forecast-pill span { color: rgba(255,255,255,0.76); font-size: 0.84rem; }
+    .forecast-growth-pill { border-color: rgba(146, 255, 198, 0.24); }
+    .hangar-recommendation-card { margin-top: 16px; padding: 16px 18px; border-radius: 16px; border: 1px solid rgba(146, 255, 198, 0.24); background: linear-gradient(180deg, rgba(146, 255, 198, 0.08), rgba(143, 220, 255, 0.05)); }
+    .hangar-recommendation-card strong { display: block; color: #f5efe4; font-size: 1rem; }
+    .hangar-recommendation-card p:last-child { margin: 8px 0 0; color: rgba(255,255,255,0.78); line-height: 1.5; }
+    .hangar-setup-card { margin-top: 14px; padding: 16px 18px; border-radius: 16px; border: 1px solid rgba(241, 196, 106, 0.28); background: linear-gradient(180deg, rgba(241, 196, 106, 0.1), rgba(255,255,255,0.03)); }
+    .hangar-setup-card strong { display: block; color: #f5efe4; font-size: 1rem; }
+    .hangar-setup-card p:last-child { margin: 8px 0 0; color: rgba(255,255,255,0.78); line-height: 1.5; }
+    .recommendation-toggle { margin-top: 12px; display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.8); }
+    .recommendation-toggle input { accent-color: #92ffc6; }
+    .recommendation-action { margin-top: 12px; }
+    .hangar-top-picks-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    .hangar-top-pick-card { padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(143, 220, 255, 0.18); background: rgba(255,255,255,0.03); display: grid; gap: 6px; text-align: left; cursor: pointer; transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease; }
+    .hangar-top-pick-card:hover { transform: translateY(-2px); border-color: rgba(143, 220, 255, 0.34); background: rgba(255,255,255,0.05); }
+    .hangar-top-pick-card.active { border-color: rgba(241, 196, 106, 0.4); background: linear-gradient(180deg, rgba(241, 196, 106, 0.14), rgba(143, 220, 255, 0.06)); box-shadow: 0 0 0 1px rgba(241, 196, 106, 0.1) inset; }
+    .hangar-top-pick-card strong { color: #f5efe4; }
+    .hangar-top-pick-card span { color: rgba(255,255,255,0.76); font-size: 0.84rem; line-height: 1.4; }
+    .hangar-top-pick-card em { color: #ffd278; font-size: 0.8rem; font-style: normal; font-weight: 700; line-height: 1.4; }
+    .hangar-top-pick-card small { color: rgba(255,255,255,0.62); font-size: 0.78rem; line-height: 1.45; }
+    .hangar-top-pick-card-featured { grid-column: 1 / -1; background: linear-gradient(135deg, rgba(143, 220, 255, 0.12), rgba(241, 196, 106, 0.08)); }
+    .hangar-top-pick-card-warning { background: linear-gradient(135deg, rgba(255, 185, 99, 0.14), rgba(255,255,255,0.03)); }
+    .fleet-forecast-note { margin: 14px 0 0; color: rgba(255,255,255,0.72); line-height: 1.5; text-align: left; }
     .pilot-card-grid { max-width: 1200px; margin: 24px auto 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 22px; }
     .pilot-card { min-height: 410px; padding: 22px; border-radius: 26px; border: 1px solid rgba(0, 212, 255, 0.24); background: linear-gradient(180deg, rgba(11, 20, 36, 0.96), rgba(8, 14, 24, 0.98)); display: grid; grid-template-rows: auto auto 1fr auto; gap: 14px; text-align: left; box-shadow: 0 18px 36px rgba(0, 0, 0, 0.24); transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease; }
     .pilot-card:hover { transform: translateY(-5px); box-shadow: 0 24px 44px rgba(0, 0, 0, 0.32); border-color: rgba(143, 220, 255, 0.36); }
@@ -390,9 +1766,24 @@
     .pilot-card.open-slot { cursor: pointer; border-color: rgba(143, 220, 255, 0.42); }
     .pilot-card-crest { width: 86px; height: 86px; border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 2.1rem; font-weight: 800; letter-spacing: 0.08em; background: linear-gradient(145deg, rgba(143, 220, 255, 0.18), rgba(255, 255, 255, 0.04)); border: 1px solid rgba(143, 220, 255, 0.22); color: #f1c46a; }
     .pilot-card-copy h3 { margin: 0 0 10px; font-size: 1.4rem; }
+    .pilot-card-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pilot-card-badge { padding: 5px 10px; border-radius: 999px; background: rgba(241, 196, 106, 0.12); border: 1px solid rgba(241, 196, 106, 0.25); color: #f9d487; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+    .pilot-card-badge-focus { background: rgba(143, 220, 255, 0.12); border-color: rgba(143, 220, 255, 0.28); color: #bfeeff; }
+    .pilot-card-badge-growth { background: rgba(146, 255, 198, 0.12); border-color: rgba(146, 255, 198, 0.3); color: #92ffc6; }
+    .pilot-card-badge-soon { background: rgba(255, 210, 120, 0.12); border-color: rgba(255, 210, 120, 0.3); color: #ffd278; }
     .slot-tag { margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.72rem; color: #8fdcff; }
     .card-level { background: rgba(112, 0, 255, 0.24); color: white; padding: 4px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: bold; white-space: nowrap; }
     .pilot-card-stats p, .locked-copy p { margin: 6px 0; font-family: 'Consolas', monospace; color: rgba(255,255,255,0.78); }
+    .pilot-card-preview { color: #f1c46a !important; font-weight: 700; }
+    .pilot-card-growth { color: #92ffc6 !important; font-weight: 700; }
+    .pilot-card-growth-panel { margin-top: 4px; padding: 10px 12px; border-radius: 14px; border: 1px solid rgba(146, 255, 198, 0.16); background: rgba(146, 255, 198, 0.05); }
+    .pilot-card-growth-panel.growth-hit { border-color: rgba(146, 255, 198, 0.34); background: rgba(146, 255, 198, 0.1); box-shadow: 0 0 0 1px rgba(146, 255, 198, 0.08) inset; }
+    .pilot-card-growth-panel.growth-soon { border-color: rgba(255, 210, 120, 0.28); background: rgba(255, 210, 120, 0.08); }
+    .pilot-card-growth-row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.78rem; color: rgba(255,255,255,0.72); }
+    .pilot-card-growth-track { width: 100%; height: 8px; margin-top: 8px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,0.1); }
+    .pilot-card-growth-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #92ffc6, #8fdcff); }
+    .pilot-card-growth-fill.growth-hit { background: linear-gradient(90deg, #92ffc6, #d7ff8a); }
+    .pilot-card-growth-fill.growth-soon { background: linear-gradient(90deg, #ffd278, #f1c46a); }
     .pilot-card-actions { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: auto; }
     .slot-name-input { width: 100%; margin-top: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(143, 220, 255, 0.28); background: rgba(4, 12, 26, 0.9); color: white; }
     .starter-class-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
@@ -416,6 +1807,9 @@
         .hangar-summary-head { flex-direction: column; }
         .hangar-actions { width: 100%; flex-direction: column; }
         .hangar-actions button { width: 100%; }
+        .hangar-preview-toolbar { flex-direction: column; align-items: stretch; }
+        .hangar-focus-toolbar { flex-direction: column; align-items: stretch; }
+        .hangar-preview-switches button { flex: 1 1 0; }
         .starter-class-grid { grid-template-columns: 1fr; }
         .modal-class-grid { grid-template-columns: 1fr; }
     }

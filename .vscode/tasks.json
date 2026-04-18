@@ -1,0 +1,49 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Nebula: Watch Server",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/Start-NebulaServerWatch.ps1"
+      ],
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "nebula-server"
+      }
+    },
+    {
+      "label": "Nebula: Watch Client",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/Start-NebulaClientWatch.ps1"
+      ],
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "nebula-client"
+      }
+    },
+    {
+      "label": "Nebula: Watch All",
+      "dependsOrder": "parallel",
+      "dependsOn": [
+        "Nebula: Watch Server",
+        "Nebula: Watch Client"
+      ]
+    }
+  ]
+}

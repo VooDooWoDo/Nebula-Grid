@@ -140,11 +140,6 @@ main {
     color: #f3cd7d;
 }
 
-.account-bonus-chip {
-    border-color: rgba(255, 145, 93, 0.28);
-    color: #ffbf97;
-}
-
     .top-row ::deep a, .top-row ::deep .btn-link {
         white-space: nowrap;
         margin-left: 1.5rem;

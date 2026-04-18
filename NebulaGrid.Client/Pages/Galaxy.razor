@@ -26,17 +26,18 @@
         <div class="galaxy-map">
             @if (PlayerService.HasAccount)
             {
-                <div class="map-info-hover" title="@PlayerService.AccountMilestoneProgressText">
+                <div class="map-info-hover">
                     <div class="map-info-chip">
                         <span class="map-info-label">Account Goal</span>
                         <strong>@PlayerService.AccountMilestoneTitle</strong>
-                        <span>@PlayerService.AccountMilestoneProgressValue / @PlayerService.AccountMilestoneTargetValue</span>
+                        <span>@PlayerService.AccountXP / @PlayerService.AccountXPToNextLevel XP</span>
                     </div>
                     <div class="map-info-popover">
                         <p class="map-info-kicker">@PlayerService.AccountProgressSummary</p>
                         <strong>@PlayerService.AccountMilestoneTitle</strong>
                         <p>@PlayerService.AccountMilestoneProgressText</p>
-                        <p>@PlayerService.AccountBonusSummary</p>
+                        <p>Account Bonus: +@PlayerService.AccountCreditBonusPercent% Credits</p>
+                        <p>@PlayerService.AccountUnlockedSlotCount/3 Slots unlocked</p>
                     </div>
                 </div>
             }
@@ -103,6 +104,13 @@
                 @if (!PlayerService.IsAreaUnlocked("ships"))
                 {
                     <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("ships")</div>
+                }
+            </div>
+            <div class="planet-container theme-defense @(GetPlanetStateClass("game5"))" style="left: 82%; top: 48%;" @onclick='() => TryTravelTo("game5", "/game5", 82, 48)'>
+                <div class="planet-icon">🛡️</div><div class="planet-name">Defense Grid</div>
+                @if (!PlayerService.IsAreaUnlocked("game5"))
+                {
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("game5")</div>
                 }
             </div>
         </div>
@@ -281,6 +289,9 @@
     .theme-hangar { border-color: rgba(126, 203, 255, 0.4); }
     .theme-hangar::before { background: radial-gradient(circle, rgba(126, 203, 255, 0.28), transparent 70%); }
     .theme-hangar .planet-name { color: #addfff; }
+    .theme-defense { border-color: rgba(255, 108, 159, 0.42); }
+    .theme-defense::before { background: radial-gradient(circle, rgba(255, 108, 159, 0.28), transparent 70%); }
+    .theme-defense .planet-name { color: #ffbad2; }
     .planet-lock {
         margin-top: 4px;
         font-size: 0.72rem;

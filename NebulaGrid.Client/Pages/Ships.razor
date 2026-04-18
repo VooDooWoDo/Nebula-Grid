@@ -38,7 +38,9 @@ else
     <h1>🛸 Ship Terminal</h1>
     <div class="resource-header">
         Available Credits: <strong style="color: #ffd700;">@PlayerService.Resource1</strong>
-        • Available Alloy: <strong style="color: #92ffc6;">@PlayerService.Alloy</strong>
+        • Fuel: <strong style="color: #8fdcff;">@PlayerService.Resource2</strong>
+        • Alloy: <strong style="color: #92ffc6;">@PlayerService.Alloy</strong>
+        • Biomass: <strong style="color: #b3ffcf;">@PlayerService.Biomass</strong>
     </div>
 
     <div class="ship-grid">
@@ -46,14 +48,18 @@ else
         {
             var isEquipped = PlayerService.CurrentShipId == ship.ShipID;
             var isOwned = ownedShipIds.Contains(ship.ShipID);
-            var (creditPrice, alloyPrice) = GetShipPrice(ship.ShipID, ship.EngineLevel);
+            var (creditPrice, fuelPrice, alloyPrice, biomassPrice) = GetShipPrice(ship.ShipID, ship.EngineLevel);
 
             <div class="ship-card @(isEquipped ? "active" : "")">
-                <span class="ship-icon">@(ship.ShipID == 1 ? "🚀" : ship.ShipID == 2 ? "🛸" : "🛰️")</span>
+                <span class="ship-icon">@(ship.ShipID == 1 ? "🚀" : ship.ShipID == 2 ? "🛸" : ship.ShipID == 3 ? "🛰️" : "👑")</span>
                 <h3>@ship.ModelName</h3>
                 <div class="stat">Engine Level: @ship.EngineLevel</div>
                 <div class="stat">Travel Time: @ship.TravelDurationSeconds.ToString("0.00")s</div>
                 <div class="stat">Cargo: @ship.CargoCapacity</div>
+                @if (ship.ShipID == 4)
+                {
+                    <div class="stat" style="color: #ffcf70;">Ultimate ship: requires every resource type</div>
+                }
 
                 @if (isEquipped)
                 {
@@ -68,9 +74,16 @@ else
                 else
                 {
                     <button class="btn-action btn-buy"
-                            disabled="@(PlayerService.Resource1 < creditPrice || PlayerService.Alloy < alloyPrice)"
+                            disabled="@(PlayerService.Resource1 < creditPrice || PlayerService.Resource2 < fuelPrice || PlayerService.Alloy < alloyPrice || PlayerService.Biomass < biomassPrice)"
                             @onclick="() => BuyShipAsync(ship.ShipID)">
-                        BUY (@creditPrice Credits / @alloyPrice Alloy)
+                        @if (ship.ShipID == 4)
+                        {
+                            <span>BUY (@creditPrice Credits / @fuelPrice Fuel / @alloyPrice Alloy / @biomassPrice Biomass)</span>
+                        }
+                        else
+                        {
+                            <span>BUY (@creditPrice Credits / @alloyPrice Alloy)</span>
+                        }
                     </button>
                 }
             </div>
@@ -122,12 +135,13 @@ else
         }
     }
 
-    private static (int CreditPrice, int AlloyPrice) GetShipPrice(int shipId, int engineLevel) => shipId switch
+    private static (int CreditPrice, int FuelPrice, int AlloyPrice, int BiomassPrice) GetShipPrice(int shipId, int engineLevel) => shipId switch
     {
-        1 => (0, 0),
-        2 => (600, 60),
-        3 => (1800, 180),
-        _ => (engineLevel * 150, engineLevel * 18)
+        1 => (0, 0, 0, 0),
+        2 => (600, 0, 60, 0),
+        3 => (1800, 0, 180, 0),
+        4 => (4200, 260, 420, 220),
+        _ => (engineLevel * 150, engineLevel * 20, engineLevel * 18, engineLevel * 16)
     };
 
     private async Task BuyShipAsync(int shipId)

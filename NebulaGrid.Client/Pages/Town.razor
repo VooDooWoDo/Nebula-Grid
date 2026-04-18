@@ -54,6 +54,54 @@ else
             <div class="town-status">@statusMessage</div>
         }
 
+        <section class="reserve-jobs-panel">
+            <div class="reserve-jobs-header">
+                <div>
+                    <p class="town-eyebrow">Reserve Jobs</p>
+                    <h2>Assign the pilot's idle duty</h2>
+                    <p class="town-lede">Set which background route this pilot should run while you are offline. Town districts unlock stronger reserve work.</p>
+                </div>
+                <div class="reserve-active-card">
+                    <span>Active Duty</span>
+                    <strong>@GetPassiveJobTitle(PlayerService.PassiveJobKey)</strong>
+                    <small>@GetPassiveJobSubtitle(PlayerService.PassiveJobKey)</small>
+                    <small class="reserve-active-note">Reserve Pilot XP levels your inactive pilots on this account, not the account itself.</small>
+                </div>
+            </div>
+
+            <div class="reserve-job-grid">
+                @foreach (var job in reserveJobs)
+                {
+                    var unlocked = PlayerService.IsReserveJobUnlocked(job.Key);
+                    var isActive = string.Equals((PlayerService.PassiveJobKey ?? string.Empty).Trim(), job.Key, StringComparison.OrdinalIgnoreCase);
+                    <article class="reserve-job-card @(unlocked ? "online" : "locked") @(isActive ? "active" : string.Empty)">
+                        <div class="reserve-job-head">
+                            <div>
+                                <span class="reserve-job-tag">@job.Tag</span>
+                                <h3>@job.Title</h3>
+                                <p>@job.Description</p>
+                            </div>
+                            <div class="reserve-job-icon">@job.Icon</div>
+                        </div>
+
+                        <div class="reserve-job-meta">
+                            <span>@job.BonusText(GetBuildingLevelForJob(job.Key))</span>
+                            <span class="reserve-job-preview">@GetPassiveJobPreview(job.Key)</span>
+                            <span>@(unlocked ? "Unlocked and ready." : PlayerService.GetReserveJobUnlockText(job.Key))</span>
+                        </div>
+
+                        <button class="town-upgrade reserve-job-button"
+                                disabled="@(!unlocked || isActive || isSwitchingPassiveJob)"
+                                @onclick="() => SetPassiveJobAsync(job.Key)">
+                            @(isActive ? "Active" : isSwitchingPassiveJob ? "Switching..." : $"Assign {job.Title}")
+                        </button>
+                    </article>
+                }
+            </div>
+
+            <p class="reserve-jobs-note">Reserve Pilot XP is stored on your offline roster pilots. Higher reserve pilot levels make later idle jobs stronger.</p>
+        </section>
+
         <div class="town-grid">
             @foreach (var building in buildings)
             {
@@ -115,13 +163,16 @@ else
 
 @code {
     private readonly List<TownBuildingViewModel> buildings = new();
+    private readonly List<ReserveJobViewModel> reserveJobs = new();
     private string? statusMessage;
     private int hydratedPlayerId;
+    private bool isSwitchingPassiveJob;
 
     protected override async Task OnInitializedAsync()
     {
         Status.OnResourceChanged += HandleResourceChanged;
         InitializeBuildings();
+        InitializeReserveJobs();
         await EnsureLoadedAsync();
     }
 
@@ -168,7 +219,43 @@ else
             Title = "Reactor Annex",
             Description = "Lets reserve vanguards run controlled plasma drills that feed player and reserve pilot XP.",
             UnlockText = level => level > 0 ? "Reactor Drill unlocked" : "Unlocks Reactor Drill",
-            BonusText = level => $"+{level * 2} player XP and +{level} reserve XP per drill cycle"
+            BonusText = level => $"+{level * 2} player XP and +{level} reserve pilot XP per drill cycle"
+        });
+    }
+
+    private void InitializeReserveJobs()
+    {
+        if (reserveJobs.Count > 0)
+        {
+            return;
+        }
+
+        reserveJobs.Add(new ReserveJobViewModel
+        {
+            Key = "survey",
+            Tag = "Economy",
+            Title = "Survey Sweep",
+            Icon = "📡",
+            Description = "Reserve prospectors scan side belts and bring back passive credit income.",
+            BonusText = level => level > 0 ? $"Survey Office LVL {level}: stronger credit sweeps and reserve pilot XP." : "Requires Survey Office LVL 1."
+        });
+        reserveJobs.Add(new ReserveJobViewModel
+        {
+            Key = "hauling",
+            Tag = "Logistics",
+            Title = "Freight Convoy",
+            Icon = "⛽",
+            Description = "Quartermasters run convoy loops and return with fuel caches while you are offline.",
+            BonusText = level => level > 0 ? $"Freight Depot LVL {level}: larger fuel convoys and logistics XP." : "Requires Freight Depot LVL 1."
+        });
+        reserveJobs.Add(new ReserveJobViewModel
+        {
+            Key = "reactor",
+            Tag = "Training",
+            Title = "Reactor Drill",
+            Icon = "⚛",
+            Description = "Vanguards perform controlled drill cycles that feed player XP and reserve pilot growth.",
+            BonusText = level => level > 0 ? $"Reactor Annex LVL {level}: more player XP and reserve pilot XP." : "Requires Reactor Annex LVL 1."
         });
     }
 
@@ -181,20 +268,27 @@ else
             return;
         }
 
-        var townBuildings = await HttpClient.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{PlayerService.SelectedPlayerId}/town") ?? new List<PlayerTownBuilding>();
-        var player = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
-
-        if (player is not null)
+        try
         {
-            PlayerService.UpdateFromPlayer(player);
-            statusMessage = player.OfflineSummary;
+            var townBuildings = await HttpClient.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{PlayerService.SelectedPlayerId}/town") ?? new List<PlayerTownBuilding>();
+            var player = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
+
+            if (player is not null)
+            {
+                PlayerService.UpdateFromPlayer(player);
+                statusMessage = player.OfflineSummary;
+            }
+
+            PlayerService.UpdateTownBuildings(townBuildings);
+
+            foreach (var building in buildings)
+            {
+                building.Level = townBuildings.FirstOrDefault(x => x.BuildingKey == building.Key)?.Level ?? 0;
+            }
         }
-
-        PlayerService.UpdateTownBuildings(townBuildings);
-
-        foreach (var building in buildings)
+        catch (Exception ex)
         {
-            building.Level = townBuildings.FirstOrDefault(x => x.BuildingKey == building.Key)?.Level ?? 0;
+            statusMessage = $"Town could not be loaded: {ex.Message}";
         }
     }
 
@@ -231,6 +325,39 @@ else
         Status.NotifyResourceChanged();
     }
 
+    private async Task SetPassiveJobAsync(string jobKey)
+    {
+        if (isSwitchingPassiveJob || PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        if (!PlayerService.IsReserveJobUnlocked(jobKey))
+        {
+            statusMessage = PlayerService.GetReserveJobUnlockText(jobKey);
+            return;
+        }
+
+        isSwitchingPassiveJob = true;
+
+        try
+        {
+            PlayerService.PassiveJobKey = jobKey;
+            var saveResponse = await HttpClient.PostAsJsonAsync("api/game/saveplayer", PlayerService.ToPlayer());
+            saveResponse.EnsureSuccessStatusCode();
+            statusMessage = $"Reserve duty changed to {GetPassiveJobTitle(jobKey)}.";
+            Status.NotifyResourceChanged();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Reserve duty could not be changed: {ex.Message}";
+        }
+        finally
+        {
+            isSwitchingPassiveJob = false;
+        }
+    }
+
     private async Task RefreshAccountProgressAsync()
     {
         if (PlayerService.AccountProfileId <= 0)
@@ -251,6 +378,70 @@ else
         "reactor-annex" => $"Needs Freight Depot LVL {targetLevel} before this district can reach LVL {targetLevel}.",
         _ => "Foundational district. Higher Survey Office levels unlock the rest of the hub chain."
     };
+
+    private int GetBuildingLevelForJob(string jobKey) => jobKey switch
+    {
+        "hauling" => PlayerService.FreightDepotLevel,
+        "reactor" => PlayerService.ReactorAnnexLevel,
+        _ => PlayerService.SurveyOfficeLevel
+    };
+
+    private static string GetPassiveJobTitle(string? jobKey) => (jobKey ?? string.Empty).Trim().ToLowerInvariant() switch
+    {
+        "hauling" => "Freight Convoy",
+        "reactor" => "Reactor Drill",
+        _ => "Survey Sweep"
+    };
+
+    private static string GetPassiveJobSubtitle(string? jobKey) => (jobKey ?? string.Empty).Trim().ToLowerInvariant() switch
+    {
+        "hauling" => "Fuel-focused reserve route",
+        "reactor" => "XP-focused reserve route",
+        _ => "Credit-focused reserve route"
+    };
+
+    private string GetPassiveJobPreview(string jobKey)
+    {
+        if (string.IsNullOrWhiteSpace(PlayerService.PilotClass))
+        {
+            return "Preview unavailable until the pilot locks in a class.";
+        }
+
+        const int previewMinutes = 60;
+        var buildingLevel = GetBuildingLevelForJob(jobKey);
+
+        return jobKey switch
+        {
+            "hauling" => GetHaulingPreview(previewMinutes, buildingLevel),
+            "reactor" => GetReactorPreview(previewMinutes, buildingLevel),
+            _ => GetSurveyPreview(previewMinutes, buildingLevel)
+        };
+    }
+
+    private string GetSurveyPreview(int previewMinutes, int buildingLevel)
+    {
+        var creditsPerMinute = 5 + PlayerService.CurrentLevel + (PlayerService.PilotMiningSkill * 2) + (PlayerService.PilotMiningTreeLevel * 4) + (buildingLevel * 3);
+        var credits = previewMinutes * creditsPerMinute;
+        var reserveXp = Math.Max(1, previewMinutes / 20) * (1 + PlayerService.PilotMiningSkill + PlayerService.PilotMiningTreeLevel + buildingLevel);
+        return $"Preview 60m: +{credits} Credits, +{reserveXp} reserve pilot XP.";
+    }
+
+    private string GetHaulingPreview(int previewMinutes, int buildingLevel)
+    {
+        var convoyCycles = Math.Max(1, previewMinutes / 18);
+        var fuelPerCycle = 1 + (PlayerService.CurrentLevel / 3) + PlayerService.PilotLogisticsSkill + (PlayerService.PilotLogisticsTreeLevel * 2) + buildingLevel;
+        var fuel = convoyCycles * fuelPerCycle;
+        var reserveXp = Math.Max(1, previewMinutes / 25) * (1 + PlayerService.PilotLogisticsSkill + PlayerService.PilotLogisticsTreeLevel + buildingLevel);
+        return $"Preview 60m: +{fuel} Fuel, +{reserveXp} reserve pilot XP.";
+    }
+
+    private string GetReactorPreview(int previewMinutes, int buildingLevel)
+    {
+        var drillCycles = Math.Max(1, previewMinutes / 12);
+        var playerXp = drillCycles * (1 + (PlayerService.CurrentLevel / 2) + PlayerService.PilotReactorSkill + (PlayerService.PilotReactorTreeLevel * 2) + (buildingLevel * 2));
+        var reserveXp = playerXp + (drillCycles * (1 + PlayerService.PilotReactorSkill + buildingLevel));
+        return $"Preview 60m: +{playerXp} player XP, +{reserveXp} reserve pilot XP.";
+    }
 
     private async void HandleResourceChanged()
     {
@@ -296,6 +487,16 @@ else
             "reactor-annex" => 14 * (Level + 1),
             _ => 8 * (Level + 1)
         };
+    }
+
+    private sealed class ReserveJobViewModel
+    {
+        public string Key { get; set; } = string.Empty;
+        public string Tag { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Icon { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public Func<int, string> BonusText { get; set; } = _ => string.Empty;
     }
 }
 
@@ -410,6 +611,134 @@ else
         border-radius: 16px;
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(143, 220, 255, 0.24);
+    }
+
+    .reserve-jobs-panel {
+        margin-bottom: 24px;
+        padding: 22px;
+        border-radius: 22px;
+        background: rgba(10, 17, 24, 0.72);
+        border: 1px solid rgba(143, 220, 255, 0.14);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
+    }
+
+    .reserve-jobs-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 18px;
+    }
+
+    .reserve-jobs-header h2 {
+        margin: 0 0 8px;
+        font-size: 1.45rem;
+    }
+
+    .reserve-active-card {
+        min-width: 220px;
+        display: grid;
+        gap: 4px;
+        align-content: start;
+        padding: 16px 18px;
+        border-radius: 18px;
+        background: rgba(15, 23, 34, 0.94);
+        border: 1px solid rgba(241, 196, 106, 0.22);
+    }
+
+    .reserve-active-card span {
+        color: #f1c46a;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+    }
+
+    .reserve-active-card small {
+        color: rgba(245, 239, 228, 0.72);
+    }
+
+    .reserve-active-note {
+        margin-top: 6px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        line-height: 1.45;
+    }
+
+    .reserve-job-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+    }
+
+    .reserve-job-card {
+        display: grid;
+        gap: 14px;
+        padding: 18px;
+        border-radius: 20px;
+        background: rgba(13, 20, 30, 0.94);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .reserve-job-card.online {
+        border-color: rgba(143, 220, 255, 0.18);
+    }
+
+    .reserve-job-card.locked {
+        opacity: 0.7;
+    }
+
+    .reserve-job-card.active {
+        border-color: rgba(241, 196, 106, 0.34);
+        box-shadow: 0 0 0 1px rgba(241, 196, 106, 0.12) inset;
+    }
+
+    .reserve-job-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+    }
+
+    .reserve-job-head h3 {
+        margin: 4px 0 6px;
+    }
+
+    .reserve-job-head p {
+        margin: 0;
+        color: rgba(245, 239, 228, 0.7);
+        line-height: 1.45;
+    }
+
+    .reserve-job-tag {
+        color: #8fdcff;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+    }
+
+    .reserve-job-icon {
+        font-size: 1.9rem;
+        line-height: 1;
+    }
+
+    .reserve-job-meta {
+        display: grid;
+        gap: 8px;
+        color: rgba(245, 239, 228, 0.8);
+        font-size: 0.9rem;
+    }
+
+    .reserve-job-preview {
+        color: #f1c46a;
+        font-weight: 700;
+    }
+
+    .reserve-job-button {
+        width: 100%;
+    }
+
+    .reserve-jobs-note {
+        margin: 14px 0 0;
+        color: rgba(245, 239, 228, 0.72);
+        line-height: 1.5;
     }
 
     .town-grid {
@@ -544,6 +873,10 @@ else
         }
 
         .town-header {
+            flex-direction: column;
+        }
+
+        .reserve-jobs-header {
             flex-direction: column;
         }
     }

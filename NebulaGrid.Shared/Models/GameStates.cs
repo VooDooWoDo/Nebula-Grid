@@ -16,3 +16,12 @@ public class Game2State : IdleGameState
 public class Game3State : IdleGameState { }
 
 public class Game4State : IdleGameState { }
+
+public class Game5State : IdleGameState
+{
+	public int PlayerID { get; set; }
+	public int WaveNumber { get; set; } = 1;
+	public int BaseIntegrity { get; set; } = 20;
+	public int EnemiesDefeated { get; set; }
+	public string TowerLayout { get; set; } = string.Empty;
+}

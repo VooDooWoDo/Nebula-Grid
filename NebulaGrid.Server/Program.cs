@@ -36,8 +36,12 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseHttpsRedirection();
+app.UseBlazorFrameworkFiles();
+app.UseStaticFiles();
 app.UseCors();
+
 app.MapControllers();
+app.MapFallbackToFile("index.html");
 app.Run();
 
 static async Task EnsureSchemaUpdatedAsync(GameDbContext dbContext)
@@ -69,8 +73,16 @@ static async Task EnsureSchemaUpdatedAsync(GameDbContext dbContext)
     await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "PendingResource1", "INTEGER NOT NULL DEFAULT 0");
     await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "PendingResource2", "INTEGER NOT NULL DEFAULT 0");
     await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "PendingResource3", "INTEGER NOT NULL DEFAULT 0");
+    await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "WaveNumber", "INTEGER NOT NULL DEFAULT 1");
+    await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "BaseIntegrity", "INTEGER NOT NULL DEFAULT 20");
+    await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "EnemiesDefeated", "INTEGER NOT NULL DEFAULT 0");
+    await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "TowerLayout", "TEXT NOT NULL DEFAULT ''");
+    await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "PlayerID", "INTEGER NOT NULL DEFAULT 0");
     await EnsurePlayerResearchTableExistsAsync(dbContext);
     await EnsurePlayerTownBuildingsTableExistsAsync(dbContext);
+    await EnsureGame5StatesAssignedToPlayersAsync(dbContext);
+    await EnsureGame5PlayerIndexAsync(dbContext);
+    await EnsureShipsSeededAsync(dbContext);
     await ResetLegacyPlayerDataIfNoAccountAsync(dbContext);
     await BackfillAccountOwnedPlayersAsync(dbContext);
     await BackfillPilotClassDataAsync(dbContext);
@@ -443,6 +455,120 @@ CREATE TABLE IF NOT EXISTS "PlayerTownBuildings" (
 );
 """;
         await createCommand.ExecuteNonQueryAsync();
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            await connection.CloseAsync();
+        }
+    }
+}
+
+static async Task EnsureGame5StatesAssignedToPlayersAsync(GameDbContext dbContext)
+{
+    var connection = dbContext.Database.GetDbConnection();
+    var shouldClose = connection.State != System.Data.ConnectionState.Open;
+
+    if (shouldClose)
+    {
+        await connection.OpenAsync();
+    }
+
+    try
+    {
+        await using var updateCommand = connection.CreateCommand();
+        updateCommand.CommandText = """
+UPDATE "IdleGameStates"
+SET "PlayerID" = COALESCE((SELECT MIN("PlayerID") FROM "Player"), 1)
+WHERE "Discriminator" = 'Game5State' AND COALESCE("PlayerID", 0) = 0;
+""";
+        await updateCommand.ExecuteNonQueryAsync();
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            await connection.CloseAsync();
+        }
+    }
+}
+
+static async Task EnsureGame5PlayerIndexAsync(GameDbContext dbContext)
+{
+    var connection = dbContext.Database.GetDbConnection();
+    var shouldClose = connection.State != System.Data.ConnectionState.Open;
+
+    if (shouldClose)
+    {
+        await connection.OpenAsync();
+    }
+
+    try
+    {
+        await using var createCommand = connection.CreateCommand();
+        createCommand.CommandText = """
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_IdleGameStates_Game5_PlayerID"
+ON "IdleGameStates" ("PlayerID")
+WHERE "Discriminator" = 'Game5State' AND "PlayerID" > 0;
+""";
+        await createCommand.ExecuteNonQueryAsync();
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            await connection.CloseAsync();
+        }
+    }
+}
+
+static async Task EnsureShipsSeededAsync(GameDbContext dbContext)
+{
+    var connection = dbContext.Database.GetDbConnection();
+    var shouldClose = connection.State != System.Data.ConnectionState.Open;
+
+    if (shouldClose)
+    {
+        await connection.OpenAsync();
+    }
+
+    try
+    {
+        var ships = new[]
+        {
+            (ShipId: 1, ModelName: "Starter Rocket", CargoCapacity: 50, EngineLevel: 1),
+            (ShipId: 2, ModelName: "Silver Glider", CargoCapacity: 85, EngineLevel: 2),
+            (ShipId: 3, ModelName: "Orbital Carrier", CargoCapacity: 140, EngineLevel: 3),
+            (ShipId: 4, ModelName: "Apex Leviathan", CargoCapacity: 240, EngineLevel: 5)
+        };
+
+        foreach (var ship in ships)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+INSERT INTO "Ships" ("ShipID", "ModelName", "CargoCapacity", "EngineLevel")
+VALUES ($shipId, $modelName, $cargoCapacity, $engineLevel)
+ON CONFLICT("ShipID") DO UPDATE SET
+    "ModelName" = excluded."ModelName",
+    "CargoCapacity" = excluded."CargoCapacity",
+    "EngineLevel" = excluded."EngineLevel";
+""";
+
+            void AddParameter(string name, object value)
+            {
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = name;
+                parameter.Value = value;
+                command.Parameters.Add(parameter);
+            }
+
+            AddParameter("$shipId", ship.ShipId);
+            AddParameter("$modelName", ship.ModelName);
+            AddParameter("$cargoCapacity", ship.CargoCapacity);
+            AddParameter("$engineLevel", ship.EngineLevel);
+            await command.ExecuteNonQueryAsync();
+        }
     }
     finally
     {

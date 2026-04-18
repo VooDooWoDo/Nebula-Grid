@@ -89,7 +89,35 @@ else
     .plot-card:hover { transform: scale(1.02); }
 
     .plant-icon { font-size: 3rem; margin-bottom: 10px; }
-    .btn-plant { background: #4caf50; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin: 2px; }
+    .plant-options {
+        width: 100%;
+        display: grid;
+        gap: 8px;
+    }
+    .btn-plant {
+        width: 100%;
+        background: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 12px;
+        border-radius: 10px;
+        cursor: pointer;
+        text-align: left;
+    }
+    .btn-plant:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+    .plant-button-title {
+        display: block;
+        font-weight: 700;
+    }
+    .plant-button-meta {
+        display: block;
+        margin-top: 4px;
+        font-size: 0.82rem;
+        color: rgba(255, 255, 255, 0.84);
+    }
     .btn-harvest { background: #ffeb3b; color: #333; font-weight: bold; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; animation: pulse 1.5s infinite; }
     .reward-toast {
         max-width: 600px;
@@ -136,6 +164,7 @@ else
         <div class="progress-card">
             <span>Pilot Progress</span>
             <strong>LVL @PlayerService.CurrentLevel</strong>
+            <small>Credits reserves: @PlayerService.Resource1</small>
             <small>Biomass reserves: @PlayerService.Biomass</small>
             <small>@PlayerService.CurrentXP / @GetXpThreshold() XP</small>
             <div class="progress-track">
@@ -156,9 +185,16 @@ else
                 @if (!plot.IsPlanted)
                 {
                     <span class="plant-icon">🟫</span>
-                    <div>
-                        <button class="btn-plant" @onclick='() => Plant(plot, "Weltraum-Weizen", 10, 50)'>Weizen (10s | 50 Biomass)</button>
-                        <button class="btn-plant" @onclick='() => Plant(plot, "Kristall-Blume", 30, 200)'>Kristall (30s | 200 Biomass)</button>
+                    <div class="plant-options">
+                        @foreach (var option in plantOptions)
+                        {
+                            <button class="btn-plant"
+                                    @onclick='() => Plant(plot, option)'
+                                    disabled="@(PlayerService.Resource1 < option.CreditCost)">
+                                <span class="plant-button-title">@option.Name</span>
+                                <span class="plant-button-meta">@FormatDuration(option.GrowSeconds) • Kosten: @option.CreditCost Credits • Ertrag: @option.BiomassYield Biomass</span>
+                            </button>
+                        }
                     </div>
                 }
                 else
@@ -173,7 +209,7 @@ else
                     {
                         <span class="plant-icon">⏳</span>
                         <p>@plot.PlantName</p>
-                        <p>Fertig in: @( (int)remaining.TotalSeconds )s</p>
+                        <p>Fertig in: @FormatRemaining(remaining)</p>
                     }
                 }
             </div>
@@ -189,6 +225,12 @@ else
     private string? statusMessage;
     private string? rewardToast;
     private int hydratedPlayerId;
+    private readonly IReadOnlyList<PlantOption> plantOptions =
+    [
+        new("Weltraum-Weizen", 10, 50),
+        new("Kristall-Blume", 30, 200),
+        new("Nebula-Farn", 300, 1500)
+    ];
 
     protected override async Task OnInitializedAsync()
     {
@@ -267,17 +309,20 @@ else
         }
     }
 
-    private async Task Plant(FarmPlot plot, string name, int seconds, int yield)
+    private async Task Plant(FarmPlot plot, PlantOption option)
     {
-        if (plot.IsPlanted || PlayerService.Resource1 < yield / 2) return;
+        if (plot.IsPlanted || PlayerService.Resource1 < option.CreditCost)
+        {
+            return;
+        }
 
-        PlayerService.Resource1 -= yield / 2;
+        PlayerService.Resource1 -= option.CreditCost;
         plot.IsPlanted = true;
-        plot.PlantName = name;
-        plot.FinishTime = DateTime.UtcNow.AddSeconds(seconds);
-        plot.ResourceYield = yield;
+        plot.PlantName = option.Name;
+        plot.FinishTime = DateTime.UtcNow.AddSeconds(option.GrowSeconds);
+        plot.ResourceYield = option.BiomassYield;
         await SavePlotsAsync();
-        statusMessage = $"{name} planted. Stored until {plot.FinishTime:HH:mm:ss} UTC.";
+        statusMessage = $"{option.Name} planted for {option.CreditCost} Credits. Stored until {plot.FinishTime:HH:mm:ss} UTC.";
         Status.NotifyResourceChanged();
     }
 
@@ -305,6 +350,30 @@ else
         return threshold <= 0 ? 0 : Math.Clamp(PlayerService.CurrentXP * 100d / threshold, 0, 100);
     }
 
+    private static string FormatDuration(int totalSeconds)
+    {
+        var duration = TimeSpan.FromSeconds(totalSeconds);
+        if (duration.TotalMinutes >= 1)
+        {
+            return $"{duration.Minutes + (duration.Hours * 60)}m";
+        }
+
+        return $"{totalSeconds}s";
+    }
+
+    private static string FormatRemaining(TimeSpan remaining)
+    {
+        var totalSeconds = Math.Max(0, (int)Math.Ceiling(remaining.TotalSeconds));
+        var duration = TimeSpan.FromSeconds(totalSeconds);
+
+        if (duration.TotalMinutes >= 1)
+        {
+            return $"{duration.Minutes + (duration.Hours * 60)}m {duration.Seconds:D2}s";
+        }
+
+        return $"{totalSeconds}s";
+    }
+
     private void ShowRewardToast(string text)
     {
         rewardToast = text;
@@ -323,5 +392,10 @@ else
     {
         Status.OnResourceChanged -= HandleResourceChanged;
         refreshTimer?.Dispose();
+    }
+
+    private sealed record PlantOption(string Name, int GrowSeconds, int BiomassYield)
+    {
+        public int CreditCost => BiomassYield / 2;
     }
 }

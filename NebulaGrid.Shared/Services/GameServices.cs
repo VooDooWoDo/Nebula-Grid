@@ -9,6 +9,8 @@ public class ShipService
 
 public class PlayerService
 {
+    public sealed record LevelUpNotification(string Scope, string Name, int NewLevel, int LevelsGained);
+
     public int AccountProfileId { get; set; }
     public string AccountName { get; set; } = string.Empty;
     public int AccountLevel { get; set; } = 1;
@@ -77,7 +79,9 @@ public class PlayerService
     public int CreditsPerSecond => IsAreaUnlocked("game4")
         ? GetModifiedCreditGain((AutoKlickerLevel * Math.Max(1, ClickPowerLevel)) + GetClassCreditFlowBonus())
         : 0;
-    public int FuelPerSecond => GetClassFuelFlowBonus() + AccountFuelBonusFlat;
+        public int FuelPerSecond => IsAreaUnlocked("game4")
+            ? GetClassFuelFlowBonus()
+            : 0;
     public int Alloy
     {
         get => Resource3;
@@ -93,7 +97,8 @@ public class PlayerService
     public int ReactorCritMultiplier => GetReactorCritMultiplier();
     public string ActiveClassRoleSummary => GetActiveClassRoleSummary();
     public string AccountProgressSummary => $"Account LVL {AccountLevel} • {AccountXP}/{AccountXPToNextLevel} Account XP";
-    public string AccountBonusSummary => $"+{AccountCreditBonusPercent}% Credits • +{AccountFuelBonusFlat} Fuel/s • {AccountUnlockedSlotCount}/{3} Slots";
+    public string AccountBonusSummary => $"+{AccountCreditBonusPercent}% Credits • {AccountUnlockedSlotCount}/{3} Slots";
+    public int PilotXPToNextLevel => Math.Max(100, CurrentLevel * 100);
 
     public string CommanderSummary => string.IsNullOrWhiteSpace(PilotClass) ? "Class Locked" : PilotClass;
     public string CommanderTraitSummary => string.IsNullOrWhiteSpace(PilotClass)
@@ -105,6 +110,7 @@ public class PlayerService
 
     public void UpdateAccount(AccountProfile? account)
     {
+        var previousAccountLevel = AccountLevel;
         AccountProfileId = account?.AccountProfileID ?? 0;
         AccountName = account?.AccountName?.Trim() ?? string.Empty;
         AccountLevel = account?.AccountLevel ?? 1;
@@ -119,6 +125,15 @@ public class PlayerService
         AccountMilestoneProgressText = account?.MilestoneProgressText ?? "Reach a combined pilot level of 10.";
         AccountMilestoneProgressValue = account?.MilestoneProgressValue ?? 0;
         AccountMilestoneTargetValue = account?.MilestoneTargetValue ?? 10;
+
+        if (AccountLevel > previousAccountLevel)
+        {
+            OnLevelUp?.Invoke(new LevelUpNotification(
+                "Account",
+                string.IsNullOrWhiteSpace(AccountName) ? "Account" : AccountName,
+                AccountLevel,
+                AccountLevel - previousAccountLevel));
+        }
     }
 
     public void ClearAccountContext()
@@ -174,6 +189,7 @@ public class PlayerService
             return 0;
         }
 
+        var startingLevel = CurrentLevel;
         CurrentXP += amount;
         var levelsGained = 0;
 
@@ -182,6 +198,15 @@ public class PlayerService
             CurrentXP -= CurrentLevel * 100;
             CurrentLevel++;
             levelsGained++;
+        }
+
+        if (levelsGained > 0)
+        {
+            OnLevelUp?.Invoke(new LevelUpNotification(
+                "Pilot",
+                string.IsNullOrWhiteSpace(PlayerName) ? "Pilot" : PlayerName,
+                CurrentLevel,
+                CurrentLevel - startingLevel));
         }
 
         return levelsGained;
@@ -224,6 +249,7 @@ public class PlayerService
         "game3" => 3,
         "research" => 4,
         "game4" => 5,
+        "game5" => 6,
         _ => 1
     };
 
@@ -420,6 +446,8 @@ public class PlayerService
         "survey" => "Survey Sweep",
         _ => "No Reserve Job"
     };
+
+    public event Action<LevelUpNotification>? OnLevelUp;
 }
 
 public class GameStatus

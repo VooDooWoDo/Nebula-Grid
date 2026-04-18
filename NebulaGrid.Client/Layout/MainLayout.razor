@@ -11,6 +11,16 @@
 @inject IJSRuntime JSRuntime
 
 <div class="page @(isSidebarVisible ? string.Empty : "sidebar-hidden")">
+    @if (!string.IsNullOrWhiteSpace(levelUpPopupText))
+    {
+        <div class="level-up-popup-shell">
+            <div class="level-up-popup">
+                <span class="level-up-kicker">Level Up</span>
+                <strong>@levelUpPopupText</strong>
+            </div>
+        </div>
+    }
+
     @if (isSidebarVisible)
     {
         <div class="sidebar">
@@ -38,17 +48,17 @@
                         </button>
                         <span class="resource-chip">Account: @PlayerService.AccountName</span>
                         <span class="resource-chip account-chip">Account LVL: @PlayerService.AccountLevel</span>
+                        <span class="resource-chip account-chip">Account XP: @PlayerService.AccountXP/@PlayerService.AccountXPToNextLevel</span>
                         <span class="resource-chip">Pilot: @PlayerService.PlayerName</span>
                         <span class="resource-chip">Class: @PlayerService.CommanderSummary</span>
                         <span class="resource-chip">Pilot LVL: @PlayerService.CurrentLevel</span>
+                        <span class="resource-chip">Pilot XP: @PlayerService.CurrentXP/@PlayerService.PilotXPToNextLevel</span>
                         <span class="resource-chip">Credits: @PlayerService.Resource1</span>
                         <span class="resource-chip">Fuel: @PlayerService.Resource2</span>
                         <span class="resource-chip">Alloy: @PlayerService.Alloy</span>
                         <span class="resource-chip">Biomass: @PlayerService.Biomass</span>
                         <span class="resource-chip rate-chip">+@PlayerService.CreditsPerSecond Credits/s</span>
                         <span class="resource-chip rate-chip">+@PlayerService.FuelPerSecond Fuel/s</span>
-                        <span class="resource-chip account-bonus-chip">+@PlayerService.AccountCreditBonusPercent% account credits</span>
-                        <span class="resource-chip">XP: @PlayerService.CurrentXP</span>
                     </div>
                 }
             </div>
@@ -64,6 +74,50 @@
     </main>
 </div>
 
+<style>
+    .level-up-popup-shell {
+        position: fixed;
+        inset: 78px 0 auto 0;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 1200;
+    }
+
+    .level-up-popup {
+        min-width: 280px;
+        padding: 14px 20px;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 215, 92, 0.52);
+        background: linear-gradient(135deg, rgba(28, 23, 8, 0.96), rgba(64, 42, 10, 0.92));
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.34), 0 0 28px rgba(255, 196, 61, 0.18);
+        text-align: center;
+        color: #ffe7a6;
+        animation: levelUpPopupIn 1.8s ease forwards;
+    }
+
+    .level-up-kicker {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 0.74rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(255, 231, 166, 0.8);
+    }
+
+    .level-up-popup strong {
+        font-size: 1.08rem;
+        font-weight: 800;
+    }
+
+    @@keyframes levelUpPopupIn {
+        0% { opacity: 0; transform: translateY(-14px) scale(0.96); }
+        12% { opacity: 1; transform: translateY(0) scale(1); }
+        82% { opacity: 1; transform: translateY(0) scale(1); }
+        100% { opacity: 0; transform: translateY(-10px) scale(0.98); }
+    }
+</style>
+
 @code {
     private const string SelectedAccountStorageKey = "nebula.selected-account-id";
     private const string SelectedPlayerStorageKey = "nebula.selected-player-id";
@@ -73,6 +127,8 @@
     private bool isSessionReady;
     private bool isSidebarVisible = true;
     private int unsavedAutomationTicks;
+    private string? levelUpPopupText;
+    private int levelUpPopupVersion;
 
     private string SidebarToggleText => isSidebarVisible ? "Hide Nav" : "Show Nav";
     private bool ShouldShowGalaxyShortcut => !isSidebarVisible && PlayerService.SelectedPlayerId > 0 && !IsCurrentRoute("galaxy");
@@ -84,6 +140,7 @@
     protected override void OnInitialized()
     {
         Status.OnResourceChanged += HandleResourceChanged;
+        PlayerService.OnLevelUp += HandleLevelUp;
         NavManager.LocationChanged += HandleLocationChanged;
         automationTimer = new System.Threading.Timer(_ => InvokeAsync(ApplyAutomationTickAsync), null, 1000, 1000);
     }
@@ -131,6 +188,36 @@
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleLevelUp(PlayerService.LevelUpNotification notification)
+    {
+        levelUpPopupVersion++;
+        var popupVersion = levelUpPopupVersion;
+        var label = string.Equals(notification.Scope, "Account", StringComparison.OrdinalIgnoreCase)
+            ? "Account LVL"
+            : "Pilot LVL";
+
+        levelUpPopupText = notification.LevelsGained > 1
+            ? $"{notification.Name} reached {label} {notification.NewLevel} (+{notification.LevelsGained})"
+            : $"{notification.Name} reached {label} {notification.NewLevel}";
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(1800);
+            await InvokeAsync(() =>
+            {
+                if (popupVersion != levelUpPopupVersion)
+                {
+                    return;
+                }
+
+                levelUpPopupText = null;
+                StateHasChanged();
+            });
+        });
+
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private async Task ApplyAutomationTickAsync()
@@ -322,6 +409,7 @@
     public void Dispose()
     {
         Status.OnResourceChanged -= HandleResourceChanged;
+        PlayerService.OnLevelUp -= HandleLevelUp;
         NavManager.LocationChanged -= HandleLocationChanged;
         automationTimer?.Dispose();
     }

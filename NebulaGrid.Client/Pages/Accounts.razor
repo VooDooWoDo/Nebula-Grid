@@ -19,7 +19,7 @@
         <div class="accounts-current-panel">
             <span>Current Account</span>
             <strong>@(currentAccount?.AccountName ?? "None Selected")</strong>
-            <small>@(currentAccount is not null ? $"Account LVL {currentAccount.AccountLevel} • {currentAccount.AccountXP}/{currentAccount.AccountXPToNextLevel} Account XP" : "Select a profile to open its hangar.")</small>
+            <small>@GetCurrentAccountProgressSummary()</small>
         </div>
     </section>
 
@@ -38,11 +38,10 @@
                     <span class="profile-level">LVL @account.AccountLevel</span>
                 </div>
                 <h2>@account.AccountName</h2>
-                <p>@account.AccountXP / @account.AccountXPToNextLevel XP</p>
+                <p>@GetAccountProgressSummary(account, isActive)</p>
                 <div class="profile-stats">
-                    <span>@account.CombinedPilotLevels pilot levels</span>
                     <span>@account.UnlockedSlotCount / 3 slots online</span>
-                    <span>+@account.CreditBonusPercent% credits • +@account.FuelBonusFlat fuel/s</span>
+                    <span>+@account.CreditBonusPercent% credits</span>
                 </div>
                 <div class="profile-actions">
                     <button type="button" class="profile-open-button" @onclick="() => SelectAccountAsync(account)">
@@ -61,7 +60,7 @@
             </div>
             <h2>Create Account</h2>
             <p>Start a fresh local progression track with its own pilots and idle gains.</p>
-            <input class="profile-input" placeholder="Account name" @bind="accountDraftName" maxlength="24" />
+            <input class="profile-input" placeholder="Account name" @bind="accountDraftName" maxlength="24" @onkeydown="HandleCreateAccountKeyDownAsync" />
             <button class="profile-create-button" @onclick="CreateAccountAsync">Create And Open</button>
         </div>
     </div>
@@ -201,6 +200,28 @@
         };
     }
 
+    private string GetCurrentAccountProgressSummary()
+    {
+        if (currentAccount is null)
+        {
+            return "Select a profile to open its hangar.";
+        }
+
+        return currentAccount.AccountProfileID == PlayerService.AccountProfileId
+            ? PlayerService.AccountProgressSummary
+            : GetAccountProgressSummary(currentAccount, false);
+    }
+
+    private string GetAccountProgressSummary(AccountProfile account, bool isActive)
+    {
+        if (isActive && account.AccountProfileID == PlayerService.AccountProfileId)
+        {
+            return PlayerService.AccountProgressSummary;
+        }
+
+        return $"Account LVL {account.AccountLevel} • {account.AccountXP}/{account.AccountXPToNextLevel} Account XP";
+    }
+
     private async void HandleResourceChanged()
     {
         if (PlayerService.AccountProfileId <= 0)
@@ -281,6 +302,16 @@
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private Task HandleCreateAccountKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            return CreateAccountAsync();
+        }
+
+        return Task.CompletedTask;
     }
 
     public void Dispose()

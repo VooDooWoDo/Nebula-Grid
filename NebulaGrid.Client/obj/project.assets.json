@@ -2167,11 +2167,11 @@
   "project": {
     "version": "1.0.0-alpha",
     "restore": {
-      "projectUniqueName": "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.CLient\\NebulaGrid.Client.csproj",
+      "projectUniqueName": "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.Client\\NebulaGrid.Client.csproj",
       "projectName": "NebulaGrid.Client",
-      "projectPath": "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.CLient\\NebulaGrid.Client.csproj",
+      "projectPath": "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.Client\\NebulaGrid.Client.csproj",
       "packagesPath": "C:\\Users\\tobo0\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.CLient\\obj\\",
+      "outputPath": "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.Client\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\tobo0\\AppData\\Roaming\\NuGet\\NuGet.Config"

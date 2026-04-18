@@ -57,7 +57,7 @@ else
                 <button class="btn-buy"
                         @onclick="() => BuyUpgrade(upgrade)"
                         disabled="@(PlayerService.Resource1 < upgrade.Cost)">
-                    Kaufen (@upgrade.Cost R1)
+                    Kaufen (@upgrade.Cost Credits)
                 </button>
             </div>
         }

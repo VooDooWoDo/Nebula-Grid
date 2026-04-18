@@ -24,6 +24,7 @@ public class GameDbContext : DbContext
     public DbSet<Game2State> Game2States => Set<Game2State>();
     public DbSet<Game3State> Game3States => Set<Game3State>();
     public DbSet<Game4State> Game4States => Set<Game4State>();
+    public DbSet<Game5State> Game5States => Set<Game5State>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,7 +128,8 @@ public class GameDbContext : DbContext
         modelBuilder.Entity<Ship>().HasData(
             new Ship { ShipID = 1, ModelName = "Starter Rocket", CargoCapacity = 50, EngineLevel = 1 },
             new Ship { ShipID = 2, ModelName = "Silver Glider", CargoCapacity = 85, EngineLevel = 2 },
-            new Ship { ShipID = 3, ModelName = "Orbital Carrier", CargoCapacity = 140, EngineLevel = 3 }
+            new Ship { ShipID = 3, ModelName = "Orbital Carrier", CargoCapacity = 140, EngineLevel = 3 },
+            new Ship { ShipID = 4, ModelName = "Apex Leviathan", CargoCapacity = 240, EngineLevel = 5 }
         );
 
     }

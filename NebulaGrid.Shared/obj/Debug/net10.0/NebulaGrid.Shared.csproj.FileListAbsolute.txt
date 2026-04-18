@@ -5,6 +5,7 @@ C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Shared\obj\Debug\net10.0\NebulaGri
 C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Shared\obj\Debug\net10.0\NebulaGrid.Shared.AssemblyInfoInputs.cache
 C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Shared\obj\Debug\net10.0\NebulaGrid.Shared.AssemblyInfo.cs
 C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Shared\obj\Debug\net10.0\NebulaGrid.Shared.csproj.CoreCompileInputs.cache
+C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Shared\obj\Debug\net10.0\NebulaGrid.Shared.sourcelink.json
 C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Shared\obj\Debug\net10.0\NebulaGrid.Shared.dll
 C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Shared\obj\Debug\net10.0\refint\NebulaGrid.Shared.dll
 C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Shared\obj\Debug\net10.0\NebulaGrid.Shared.pdb

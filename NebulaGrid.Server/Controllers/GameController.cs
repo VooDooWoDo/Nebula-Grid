@@ -154,12 +154,13 @@ public class GameController : ControllerBase
         _ => 8 * (currentLevel + 1)
     };
 
-    private static (int CreditPrice, int AlloyPrice) GetShipPurchasePrice(int shipId, int engineLevel) => shipId switch
+    private static (int CreditPrice, int FuelPrice, int AlloyPrice, int BiomassPrice) GetShipPurchasePrice(int shipId, int engineLevel) => shipId switch
     {
-        1 => (0, 0),
-        2 => (600, 60),
-        3 => (1800, 180),
-        _ => (engineLevel * 150, engineLevel * 18)
+        1 => (0, 0, 0, 0),
+        2 => (600, 0, 60, 0),
+        3 => (1800, 0, 180, 0),
+        4 => (4200, 260, 420, 220),
+        _ => (engineLevel * 150, engineLevel * 20, engineLevel * 18, engineLevel * 16)
     };
 
     private static void ResetOfflineReport(Player player)
@@ -203,8 +204,7 @@ public class GameController : ControllerBase
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
         var pilotProgress = players.Sum(player => Math.Max(0, ((Math.Max(1, player.Level) - 1) * 100) + player.XP));
-        var classCoverageBonus = combinedCommanderLevels * 120;
-        var accountProgress = pilotProgress + (players.Count * 70) + classCoverageBonus;
+        var accountProgress = pilotProgress;
 
         var accountLevel = 1;
         var xpRemainder = accountProgress;
@@ -220,7 +220,7 @@ public class GameController : ControllerBase
         var unlockedSlotCount = Math.Max(GetUnlockedSlotCount(accountLevel), players.Count == 0 ? 1 : players.Max(player => Math.Max(1, player.CharacterSlot)));
         var nextMilestoneTarget = Math.Max(10, ((combinedPilotLevels / 10) + 1) * 10);
         var creditBonusPercent = Math.Min(24, Math.Max(0, (accountLevel - 1) * 4));
-        var fuelBonusFlat = Math.Min(4, Math.Max(0, accountLevel / 2));
+        const int fuelBonusFlat = 0;
 
         account.AccountLevel = accountLevel;
         account.AccountXP = xpRemainder;
@@ -234,8 +234,8 @@ public class GameController : ControllerBase
         account.MilestoneTargetValue = nextMilestoneTarget;
         account.MilestoneProgressValue = combinedPilotLevels;
         account.MilestoneProgressText = unlockedSlotCount < MaxCharacterSlots
-            ? $"Reach Account LVL {GetCharacterSlotUnlockLevel(unlockedSlotCount + 1)} to unlock Slot {unlockedSlotCount + 1}. Combined pilot levels: {combinedPilotLevels}/{nextMilestoneTarget}."
-            : $"All hangar slots are online. Push your fleet to a combined pilot level of {nextMilestoneTarget}.";
+            ? $"Reach Account LVL {GetCharacterSlotUnlockLevel(unlockedSlotCount + 1)} to unlock Slot {unlockedSlotCount + 1}. Current Account XP: {xpRemainder}/{xpToNextLevel}. Combined pilot levels: {combinedPilotLevels}/{nextMilestoneTarget}."
+            : $"All hangar slots are online. Current Account XP: {xpRemainder}/{xpToNextLevel}. Push your fleet to a combined pilot level of {nextMilestoneTarget}.";
 
         return account;
     }
@@ -586,7 +586,7 @@ public class GameController : ControllerBase
 
             if (player.OfflineReserveXpGained > 0)
             {
-                summaryParts.Add($"+{player.OfflineReserveXpGained} Reserve XP");
+                summaryParts.Add($"+{player.OfflineReserveXpGained} Reserve Pilot XP");
             }
 
             if (summaryParts.Count > 0)
@@ -710,60 +710,94 @@ public class GameController : ControllerBase
 
         if (player.Resource1 < 100)
         {
-            return BadRequest("Not enough resources");
+            return BadRequest("Not enough credits.");
         }
 
         player.Resource1 -= 100;
 
-        Random rnd = new();
-        int dice = rnd.Next(1, 101);
+        var rnd = new Random();
+        var dice = rnd.Next(1, 101);
         string message;
         string icon;
 
-        if (dice <= 45) // 45% Chance: Kleiner Trostpreis
+        if (dice <= 33)
         {
-            int win = rnd.Next(10, 81);
-            player.Resource1 += win;
+            var creditWin = rnd.Next(30, 96);
+            player.Resource1 += creditWin;
             icon = "🔩";
-            message = $"Trostpreis: {win} Credits gefunden.";
+            message = $"Scrap haul: {creditWin} Credits recovered.";
         }
-        else if (dice <= 80) // 35% Chance: Guter Fund
+        else if (dice <= 58)
         {
-            int win = rnd.Next(150, 401);
-            int xpWin = 20;
-            player.Resource1 += win;
+            var creditWin = rnd.Next(180, 361);
+            var xpWin = 18;
+            player.Resource1 += creditWin;
             player.XP += xpWin;
-            // Simple level up
             while (player.XP >= player.Level * 100)
             {
                 player.XP -= player.Level * 100;
                 player.Level++;
             }
+
             icon = "💎";
-            message = $"Guter Fang! {win} Credits & {xpWin} XP!";
+            message = $"Data cache cracked: +{creditWin} Credits and +{xpWin} Pilot XP.";
         }
-        else if (dice <= 95) // 15% Chance: Seltener R2 Fund
+        else if (dice <= 76)
         {
-            int winR2 = rnd.Next(5, 16);
-            player.Resource2 += winR2;
+            var alloyWin = rnd.Next(12, 31);
+            player.Resource3 += alloyWin;
+            icon = "🪨";
+            message = $"Industrial crate: +{alloyWin} Alloy secured.";
+        }
+        else if (dice <= 90)
+        {
+            var biomassWin = rnd.Next(16, 39);
+            player.Resource4 += biomassWin;
+            icon = "🧬";
+            message = $"Bio pod stabilized: +{biomassWin} Biomass harvested.";
+        }
+        else if (dice <= 95)
+        {
+            var fuelWin = rnd.Next(8, 21);
+            player.Resource2 += fuelWin;
             icon = "🔋";
-            message = $"Selten! {winR2} Fuel Einheiten geborgen!";
+            message = $"Fuel cells recovered: +{fuelWin} Fuel.";
         }
-        else // 5% Chance: JACKPOT
+        else
         {
-            int win = 1500;
-            player.Resource1 += win;
-            player.XP += 100;
+            const int creditWin = 900;
+            const int fuelWin = 35;
+            const int alloyWin = 70;
+            const int biomassWin = 90;
+            const int xpWin = 75;
+            player.Resource1 += creditWin;
+            player.Resource2 += fuelWin;
+            player.Resource3 += alloyWin;
+            player.Resource4 += biomassWin;
+            player.XP += xpWin;
             while (player.XP >= player.Level * 100)
             {
                 player.XP -= player.Level * 100;
                 player.Level++;
             }
+
             icon = "⭐";
-            message = "LEGENDÄRER JACKPOT! 1500 Credits + 100 XP!";
+            message = $"Legendary cache! +{creditWin} Credits, +{fuelWin} Fuel, +{alloyWin} Alloy, +{biomassWin} Biomass and +{xpWin} Pilot XP.";
         }
 
         player.LastActiveUtc = DateTime.UtcNow;
+
+        if (player.AccountProfileID > 0)
+        {
+            var account = await _dbContext.AccountProfiles.FirstOrDefaultAsync(x => x.AccountProfileID == player.AccountProfileID);
+            if (account is not null)
+            {
+                var accountPlayers = await _dbContext.Players
+                    .Where(x => x.AccountProfileID == player.AccountProfileID)
+                    .ToListAsync();
+                ApplyAccountProgress(account, accountPlayers);
+            }
+        }
 
         await _dbContext.SaveChangesAsync();
 
@@ -773,8 +807,10 @@ public class GameController : ControllerBase
             Icon = icon,
             NewResource1 = player.Resource1,
             NewResource2 = player.Resource2,
-            NewXP = player.XP,
-            NewLevel = player.Level
+            NewResource3 = player.Resource3,
+            NewResource4 = player.Resource4,
+            NewPilotXP = player.XP,
+            NewPilotLevel = player.Level
         });
     }
 
@@ -967,6 +1003,62 @@ public class GameController : ControllerBase
             existing.ClickUpgradeLevel = state.ClickUpgradeLevel;
             existing.TotalClicks = state.TotalClicks;
             existing.LastSaved = state.LastSaved;
+        }
+
+        await _dbContext.SaveChangesAsync();
+        return Ok(existing ?? state);
+    }
+
+    [HttpGet("player/{playerId:int}/game5")]
+    [HttpGet("player/{playerId:int}/game5state")]
+    public async Task<ActionResult<Game5State>> GetGame5State(int playerId)
+    {
+        await GetOrCreatePlayerAsync(playerId);
+        _logger.LogInformation("Game5 state loaded");
+        var state = await _dbContext.Game5States.FirstOrDefaultAsync(x => x.PlayerID == playerId);
+        if (state is null)
+        {
+            state = new Game5State { PlayerID = playerId };
+            await _dbContext.Game5States.AddAsync(state);
+            await _dbContext.SaveChangesAsync();
+        }
+
+        return state;
+    }
+
+    [HttpPost("player/{playerId:int}/game5")]
+    [HttpPost("player/{playerId:int}/savegame5state")]
+    public async Task<ActionResult<Game5State>> SaveGame5State(int playerId, Game5State state)
+    {
+        if (state == null)
+        {
+            return BadRequest("State is required.");
+        }
+
+        await GetOrCreatePlayerAsync(playerId);
+
+        var existing = await _dbContext.Game5States.FirstOrDefaultAsync(x => x.PlayerID == playerId);
+        state.LastSaved = DateTime.UtcNow;
+        state.PlayerID = playerId;
+
+        if (existing is null)
+        {
+            await _dbContext.Game5States.AddAsync(state);
+        }
+        else
+        {
+            existing.PlayerID = playerId;
+            existing.Currency = state.Currency;
+            existing.IncomePerSecond = state.IncomePerSecond;
+            existing.ClickPower = state.ClickPower;
+            existing.UpgradeLevel = state.UpgradeLevel;
+            existing.ClickUpgradeLevel = state.ClickUpgradeLevel;
+            existing.TotalClicks = state.TotalClicks;
+            existing.LastSaved = state.LastSaved;
+            existing.WaveNumber = state.WaveNumber;
+            existing.BaseIntegrity = state.BaseIntegrity;
+            existing.EnemiesDefeated = state.EnemiesDefeated;
+            existing.TowerLayout = state.TowerLayout;
         }
 
         await _dbContext.SaveChangesAsync();
@@ -1615,14 +1707,16 @@ public class GameController : ControllerBase
         var alreadyOwned = await _dbContext.OwnedShips.AnyAsync(x => x.PlayerID == playerId && x.ShipID == shipId);
         if (!alreadyOwned)
         {
-            var (creditPrice, alloyPrice) = GetShipPurchasePrice(shipId, ship.EngineLevel);
-            if (player.Resource1 < creditPrice || player.Resource3 < alloyPrice)
+            var (creditPrice, fuelPrice, alloyPrice, biomassPrice) = GetShipPurchasePrice(shipId, ship.EngineLevel);
+            if (player.Resource1 < creditPrice || player.Resource2 < fuelPrice || player.Resource3 < alloyPrice || player.Resource4 < biomassPrice)
             {
-                return BadRequest("Not enough credits or alloy.");
+                return BadRequest("Not enough resources for this ship.");
             }
 
             player.Resource1 -= creditPrice;
+            player.Resource2 -= fuelPrice;
             player.Resource3 -= alloyPrice;
+            player.Resource4 -= biomassPrice;
             _dbContext.OwnedShips.Add(new OwnedShip { PlayerID = playerId, ShipID = shipId });
         }
 
@@ -1632,14 +1726,4 @@ public class GameController : ControllerBase
         return Ok(player);
     }
 
-}
-
-public class LootboxResult
-{
-    public string Message { get; set; } = string.Empty;
-    public string Icon { get; set; } = string.Empty;
-    public int NewResource1 { get; set; }
-    public int NewResource2 { get; set; }
-    public int NewXP { get; set; }
-    public int NewLevel { get; set; }
 }

@@ -23,7 +23,14 @@ else
 <div class="loot-container">
     <div class="loot-header">
         <h1>STELLAR CARGO</h1>
-        <p>Try your luck, Pilot! A container costs <strong>100 Credits</strong>.</p>
+        <p>Try your luck, Pilot! A container costs <strong>100 Credits</strong> and can now drop Credits, Fuel, Alloy, Biomass, or Pilot XP from premium data caches.</p>
+    </div>
+
+    <div class="resource-bar">
+        <span>Credits: <strong>@PlayerService.Resource1</strong></span>
+        <span>Fuel: <strong>@PlayerService.Resource2</strong></span>
+        <span>Alloy: <strong>@PlayerService.Alloy</strong></span>
+        <span>Biomass: <strong>@PlayerService.Biomass</strong></span>
     </div>
 
     <div class="box-display">
@@ -97,6 +104,26 @@ else
         border-radius: 20px;
         padding: 40px;
         box-shadow: 0 0 30px rgba(112, 0, 255, 0.2);
+    }
+
+    .resource-bar {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+        padding: 14px;
+        border-radius: 14px;
+        background: rgba(16, 20, 44, 0.76);
+        border: 1px solid rgba(126, 176, 255, 0.18);
+    }
+
+    .resource-bar span {
+        color: #a9c5ff;
+        font-size: 0.95rem;
+    }
+
+    .resource-bar strong {
+        color: #ffffff;
     }
 
     .box-visual {
@@ -283,8 +310,11 @@ else
                 lastWinIcon = result.Icon;
                 PlayerService.Resource1 = result.NewResource1;
                 PlayerService.Resource2 = result.NewResource2;
-                PlayerService.CurrentXP = result.NewXP;
-                PlayerService.CurrentLevel = result.NewLevel;
+                PlayerService.Alloy = result.NewResource3;
+                PlayerService.Biomass = result.NewResource4;
+                PlayerService.CurrentXP = result.NewPilotXP;
+                PlayerService.CurrentLevel = result.NewPilotLevel;
+                await RefreshAccountProgressAsync();
 
                 recentWins.Insert(0, message);
                 if (recentWins.Count > 5) recentWins.RemoveAt(5);
@@ -303,6 +333,20 @@ else
     public void Dispose()
     {
         Status.OnResourceChanged -= HandleResourceChanged;
+    }
+
+    private async Task RefreshAccountProgressAsync()
+    {
+        if (PlayerService.AccountProfileId <= 0)
+        {
+            return;
+        }
+
+        var account = await Http.GetFromJsonAsync<AccountProfile>($"api/game/account/{PlayerService.AccountProfileId}");
+        if (account is not null)
+        {
+            PlayerService.UpdateAccount(account);
+        }
     }
 
 }
