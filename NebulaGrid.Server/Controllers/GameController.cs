@@ -10,8 +10,8 @@ namespace NebulaGrid.Server.Controllers;
 [Route("api/[controller]")]
 public class GameController : ControllerBase
 {
-    private const int MaxCharacterSlots = 3;
-    private static readonly string[] PilotClasses = ["Prospector", "Quartermaster", "Vanguard"];
+    private const int MaxCharacterSlots = 4;
+    private static readonly string[] PilotClasses = ["Pilot", "Gardener", "Gambler"];
     private readonly GameDbContext _dbContext;
     private readonly ILogger<GameController> _logger;
 
@@ -22,15 +22,15 @@ public class GameController : ControllerBase
     }
 
     private static readonly string[] DefaultResearchTypes = ["MiningEfficiency", "LogisticsProtocols", "ReactorTheory"];
-    private sealed record PassiveJobResult(int Credits, int Fuel, int PlayerXp, int CommanderXp, string Summary);
+    private sealed record PassiveJobResult(int Credits, int Fuel, int Alloy, int Biomass, int PlayerXp, int CommanderXp, string Summary);
 
     private static List<PlayerTownBuilding> BuildDefaultTownBuildings(Player player)
     {
         return new List<PlayerTownBuilding>
         {
-            new() { PlayerID = player.PlayerID, BuildingKey = "survey-office", Level = 1 },
-            new() { PlayerID = player.PlayerID, BuildingKey = "freight-depot", Level = player.Level >= 3 ? 1 : 0 },
-            new() { PlayerID = player.PlayerID, BuildingKey = "reactor-annex", Level = player.Level >= 4 ? 1 : 0 }
+            new() { PlayerID = player.PlayerID, BuildingKey = "ship-upgrade", Level = 0 },
+            new() { PlayerID = player.PlayerID, BuildingKey = "garden-upgrade", Level = player.Level >= 3 ? 1 : 0 },
+            new() { PlayerID = player.PlayerID, BuildingKey = "better-loot-box", Level = player.Level >= 4 ? 1 : 0 }
         };
     }
 
@@ -39,6 +39,41 @@ public class GameController : ControllerBase
         var existingBuildings = await _dbContext.PlayerTownBuildings
             .Where(x => x.PlayerID == player.PlayerID)
             .ToListAsync();
+
+        var hasChanges = false;
+        foreach (var building in existingBuildings)
+        {
+            var normalizedKey = NormalizeTownBuildingKey(building.BuildingKey);
+            if (!string.Equals(building.BuildingKey, normalizedKey, StringComparison.OrdinalIgnoreCase))
+            {
+                building.BuildingKey = normalizedKey;
+                hasChanges = true;
+            }
+        }
+
+        var duplicateGroups = existingBuildings
+            .GroupBy(building => building.BuildingKey, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .ToList();
+
+        foreach (var duplicateGroup in duplicateGroups)
+        {
+            var mergedLevel = duplicateGroup.Max(building => building.Level);
+            var keeper = duplicateGroup.OrderByDescending(building => building.Level).First();
+            keeper.Level = mergedLevel;
+
+            foreach (var duplicate in duplicateGroup.Skip(1))
+            {
+                _dbContext.PlayerTownBuildings.Remove(duplicate);
+            }
+
+            hasChanges = true;
+        }
+
+        if (hasChanges)
+        {
+            await _dbContext.SaveChangesAsync();
+        }
 
         var defaultBuildings = BuildDefaultTownBuildings(player);
         var existingKeys = existingBuildings.Select(x => x.BuildingKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -59,15 +94,15 @@ public class GameController : ControllerBase
             .Where(x => x.PlayerID == playerId)
             .ToListAsync();
 
-        return buildings.ToDictionary(x => x.BuildingKey, x => x.Level, StringComparer.OrdinalIgnoreCase);
-    }
+        var normalizedMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var building in buildings)
+        {
+            var normalizedKey = NormalizeTownBuildingKey(building.BuildingKey);
+            normalizedMap[normalizedKey] = Math.Max(normalizedMap.GetValueOrDefault(normalizedKey, 0), building.Level);
+        }
 
-    private static string? GetTownUpgradeRequirement(string buildingKey, int targetLevel, IReadOnlyDictionary<string, int> townLevels) => buildingKey switch
-    {
-        "freight-depot" when townLevels.GetValueOrDefault("survey-office", 0) < targetLevel => $"Requires Survey Office LVL {targetLevel}.",
-        "reactor-annex" when townLevels.GetValueOrDefault("freight-depot", 0) < targetLevel => $"Requires Freight Depot LVL {targetLevel}.",
-        _ => null
-    };
+        return normalizedMap;
+    }
 
     private static void GrantPlayerProgress(Player player, int xpGain)
     {
@@ -79,78 +114,107 @@ public class GameController : ControllerBase
         }
     }
 
-    private static bool IsPassiveJobUnlocked(string jobKey, IReadOnlyDictionary<string, int> townLevels) => jobKey switch
+    private static int GetPilotProgressContribution(Player player)
     {
-        "hauling" => townLevels.GetValueOrDefault("freight-depot", 0) > 0,
-        "reactor" => townLevels.GetValueOrDefault("reactor-annex", 0) > 0,
-        _ => townLevels.GetValueOrDefault("survey-office", 0) > 0
-    };
+        return Math.Max(0, (Math.Max(1, player.Level) - 1) * 100) + Math.Max(0, player.XP);
+    }
+
+    private static bool IsPassiveJobUnlocked(string jobKey, IReadOnlyDictionary<string, int> townLevels)
+    {
+        var normalizedKey = NormalizePassiveJobKey(jobKey);
+        return normalizedKey is "flying" or "gardening" or "gambling";
+    }
 
     private static PassiveJobResult ResolvePassiveJob(Player pilot, int offlineMinutes, IReadOnlyDictionary<string, int> townLevels)
     {
         if (string.IsNullOrWhiteSpace(pilot.PilotClass))
         {
-            return new PassiveJobResult(0, 0, 0, 0, $"{pilot.PlayerName} is still in training.");
+            return new PassiveJobResult(0, 0, 0, 0, 0, 0, $"{pilot.PlayerName} is still in training.");
         }
 
-        var passiveJobKey = string.IsNullOrWhiteSpace(pilot.PassiveJobKey)
-            ? GetDefaultPassiveJobForPilotClass(pilot.PilotClass)
-            : pilot.PassiveJobKey.ToLowerInvariant();
+        var passiveJobKey = NormalizePassiveJobKey(pilot.PassiveJobKey, pilot.PilotClass);
 
         if (!IsPassiveJobUnlocked(passiveJobKey, townLevels))
         {
-            return new PassiveJobResult(0, 0, 0, 0, $"{pilot.PlayerName} stayed idle. Upgrade the required town building first.");
+            return new PassiveJobResult(0, 0, 0, 0, 0, 0, $"{pilot.PlayerName} stayed idle. Choose a class first in Pilot Academy.");
         }
 
         return passiveJobKey switch
         {
-            "hauling" => ResolveHaulingJob(pilot, offlineMinutes, townLevels),
-            "reactor" => ResolveReactorJob(pilot, offlineMinutes, townLevels),
+            "gardening" => ResolveHaulingJob(pilot, offlineMinutes, townLevels),
+            "gambling" => ResolveReactorJob(pilot, offlineMinutes, townLevels),
             _ => ResolveSurveyJob(pilot, offlineMinutes, townLevels)
         };
     }
 
     private static PassiveJobResult ResolveSurveyJob(Player pilot, int offlineMinutes, IReadOnlyDictionary<string, int> townLevels)
     {
-        var buildingLevel = townLevels.GetValueOrDefault("survey-office", 0);
-        var creditRate = 5 + pilot.Level + (pilot.MiningSkillLevel * 2) + (pilot.MiningTreeLevel * 4) + (buildingLevel * 3);
-        var credits = offlineMinutes * creditRate;
-        var reserveXp = Math.Max(1, offlineMinutes / 20) * (1 + pilot.MiningSkillLevel + pilot.MiningTreeLevel + buildingLevel);
-        return new PassiveJobResult(credits, 0, 0, reserveXp, $"{pilot.PlayerName} ran Survey Sweep: +{credits} Credits");
+        var seconds = Math.Max(0, offlineMinutes) * 60;
+        if (seconds <= 0)
+        {
+            return new PassiveJobResult(0, 0, 0, 0, 0, 0, $"{pilot.PlayerName}: +0 Fuel, +0 Alloy, +0 XP");
+        }
+
+        var fuelPerSecond = ApplyDoctrinePercentBonus(Math.Max(0, pilot.MiningSkillLevel), Math.Max(0, pilot.MiningTreeLevel), 10);
+        var alloyPerSecond = ApplyDoctrinePercentBonus(Math.Max(0, pilot.MiningSkillLevel), Math.Max(0, pilot.MiningTreeLevel), 10);
+        var fuel = fuelPerSecond * seconds;
+        var alloy = alloyPerSecond * seconds;
+        return new PassiveJobResult(0, fuel, alloy, 0, 0, 0, $"{pilot.PlayerName}: +{fuel} Fuel, +{alloy} Alloy");
     }
 
     private static PassiveJobResult ResolveHaulingJob(Player pilot, int offlineMinutes, IReadOnlyDictionary<string, int> townLevels)
     {
-        var buildingLevel = townLevels.GetValueOrDefault("freight-depot", 0);
-        var convoyCycles = Math.Max(1, offlineMinutes / 18);
-        var fuelPerCycle = 1 + (pilot.Level / 3) + pilot.LogisticsSkillLevel + (pilot.LogisticsTreeLevel * 2) + buildingLevel;
-        var fuel = convoyCycles * fuelPerCycle;
-        var reserveXp = Math.Max(1, offlineMinutes / 25) * (1 + pilot.LogisticsSkillLevel + pilot.LogisticsTreeLevel + buildingLevel);
-        return new PassiveJobResult(0, fuel, 0, reserveXp, $"{pilot.PlayerName} ran Freight Convoy: +{fuel} Fuel");
+        var seconds = Math.Max(0, offlineMinutes) * 60;
+        if (seconds <= 0)
+        {
+            return new PassiveJobResult(0, 0, 0, 0, 0, 0, $"{pilot.PlayerName}: +0 Fuel, +0 Biomass, +0 XP");
+        }
+
+        var fuelPerSecond = ApplyDoctrinePercentBonus(Math.Max(0, pilot.LogisticsSkillLevel), Math.Max(0, pilot.LogisticsTreeLevel), 10);
+        var biomassPerSecond = ApplyDoctrinePercentBonus(Math.Max(0, pilot.LogisticsSkillLevel), Math.Max(0, pilot.LogisticsTreeLevel), 10);
+        var fuel = fuelPerSecond * seconds;
+        var biomass = biomassPerSecond * seconds;
+        return new PassiveJobResult(0, fuel, 0, biomass, 0, 0, $"{pilot.PlayerName}: +{fuel} Fuel, +{biomass} Biomass");
     }
 
     private static PassiveJobResult ResolveReactorJob(Player pilot, int offlineMinutes, IReadOnlyDictionary<string, int> townLevels)
     {
-        var buildingLevel = townLevels.GetValueOrDefault("reactor-annex", 0);
-        var drillCycles = Math.Max(1, offlineMinutes / 12);
-        var playerXp = drillCycles * (1 + (pilot.Level / 2) + pilot.ReactorSkillLevel + (pilot.ReactorTreeLevel * 2) + (buildingLevel * 2));
-        var reserveXp = playerXp + (drillCycles * (1 + pilot.ReactorSkillLevel + buildingLevel));
-        return new PassiveJobResult(0, 0, playerXp, reserveXp, $"{pilot.PlayerName} ran Reactor Drill: +{playerXp} Player XP");
+        var seconds = Math.Max(0, offlineMinutes) * 60;
+        if (seconds <= 0)
+        {
+            return new PassiveJobResult(0, 0, 0, 0, 0, 0, $"{pilot.PlayerName}: +0 Credits, +0 XP");
+        }
+
+        var creditsPerSecond = ApplyDoctrinePercentBonus(Math.Max(0, pilot.ReactorSkillLevel) * 10, Math.Max(0, pilot.ReactorTreeLevel), 8);
+        var credits = creditsPerSecond * seconds;
+        return new PassiveJobResult(credits, 0, 0, 0, 0, 0, $"{pilot.PlayerName}: +{credits} Credits");
     }
 
-    private static int GetTownUpgradeCreditCost(string buildingKey, int currentLevel) => buildingKey switch
+    private static int ApplyDoctrinePercentBonus(int baseGain, int doctrineTier, int percentPerTier)
     {
-        "survey-office" => 700 * (currentLevel + 1),
-        "freight-depot" => 950 * (currentLevel + 1),
-        "reactor-annex" => 1200 * (currentLevel + 1),
+        if (baseGain <= 0)
+        {
+            return 0;
+        }
+
+        var normalizedTier = Math.Max(0, doctrineTier);
+        var multiplier = 1 + ((normalizedTier * percentPerTier) / 100d);
+        return Math.Max(0, (int)Math.Floor(baseGain * multiplier));
+    }
+
+    private static int GetTownUpgradeCreditCost(string buildingKey, int currentLevel) => NormalizeTownBuildingKey(buildingKey) switch
+    {
+        "ship-upgrade" => 700 * (currentLevel + 1),
+        "garden-upgrade" => 950 * (currentLevel + 1),
+        "better-loot-box" => 1200 * (currentLevel + 1),
         _ => 800 * (currentLevel + 1)
     };
 
-    private static int GetTownUpgradeAlloyCost(string buildingKey, int currentLevel) => buildingKey switch
+    private static int GetTownUpgradeAlloyCost(string buildingKey, int currentLevel) => NormalizeTownBuildingKey(buildingKey) switch
     {
-        "survey-office" => 6 * (currentLevel + 1),
-        "freight-depot" => 10 * (currentLevel + 1),
-        "reactor-annex" => 14 * (currentLevel + 1),
+        "ship-upgrade" => 6 * (currentLevel + 1),
+        "garden-upgrade" => 10 * (currentLevel + 1),
+        "better-loot-box" => 14 * (currentLevel + 1),
         _ => 8 * (currentLevel + 1)
     };
 
@@ -167,8 +231,11 @@ public class GameController : ControllerBase
     {
         player.OfflineCreditsGained = 0;
         player.OfflineFuelGained = 0;
+        player.OfflineAlloyGained = 0;
+        player.OfflineBiomassGained = 0;
         player.OfflinePlayerXpGained = 0;
         player.OfflineReserveXpGained = 0;
+        player.OfflineAccountXpGained = 0;
         player.OfflineSummary = null;
     }
 
@@ -177,6 +244,7 @@ public class GameController : ControllerBase
         1 => 1,
         2 => 2,
         3 => 5,
+        4 => 7,
         _ => int.MaxValue
     };
 
@@ -187,6 +255,11 @@ public class GameController : ControllerBase
 
     private static int GetUnlockedSlotCount(int accountLevel)
     {
+        if (accountLevel >= GetCharacterSlotUnlockLevel(4))
+        {
+            return 4;
+        }
+
         if (accountLevel >= GetCharacterSlotUnlockLevel(3))
         {
             return 3;
@@ -203,8 +276,8 @@ public class GameController : ControllerBase
             .Select(player => player.PilotClass)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
-        var pilotProgress = players.Sum(player => Math.Max(0, ((Math.Max(1, player.Level) - 1) * 100) + player.XP));
-        var accountProgress = pilotProgress;
+        var pilotProgress = players.Sum(player => Math.Max(0, (Math.Max(1, player.Level) - 1) * 100));
+        var accountProgress = pilotProgress + Math.Max(0, account.AccountXpBank);
 
         var accountLevel = 1;
         var xpRemainder = accountProgress;
@@ -218,7 +291,30 @@ public class GameController : ControllerBase
         }
 
         var unlockedSlotCount = Math.Max(GetUnlockedSlotCount(accountLevel), players.Count == 0 ? 1 : players.Max(player => Math.Max(1, player.CharacterSlot)));
-        var nextMilestoneTarget = Math.Max(10, ((combinedPilotLevels / 10) + 1) * 10);
+        var highestPilotLevel = players.Count == 0 ? 1 : players.Max(player => Math.Max(1, player.Level));
+        var pilotUnlockTargets = new (int RequiredLevel, string Name)[]
+        {
+            (1, "Command Nexus"),
+            (1, "Asteroid Belt"),
+            (2, "Hangar"),
+            (2, "Stellar Cargo"),
+            (3, "Pilot Academy"),
+            (3, "Bio Dome"),
+            (4, "Research Lab"),
+            (5, "Reactor Core"),
+            (5, "Defense Grid")
+        };
+        var nextPilotUnlockLevel = pilotUnlockTargets
+            .Where(target => target.RequiredLevel > highestPilotLevel)
+            .Select(target => target.RequiredLevel)
+            .DefaultIfEmpty(-1)
+            .Min();
+        var nextPilotUnlockNames = nextPilotUnlockLevel <= 0
+            ? string.Empty
+            : string.Join(" and ", pilotUnlockTargets
+                .Where(target => target.RequiredLevel == nextPilotUnlockLevel)
+                .Select(target => target.Name)
+                .Distinct(StringComparer.OrdinalIgnoreCase));
         var creditBonusPercent = Math.Min(24, Math.Max(0, (accountLevel - 1) * 4));
         const int fuelBonusFlat = 0;
 
@@ -230,12 +326,12 @@ public class GameController : ControllerBase
         account.UnlockedSlotCount = unlockedSlotCount;
         account.CreditBonusPercent = creditBonusPercent;
         account.FuelBonusFlat = fuelBonusFlat;
-        account.MilestoneTitle = unlockedSlotCount < MaxCharacterSlots ? "Next Hangar Slot" : "Fleet Cohesion";
-        account.MilestoneTargetValue = nextMilestoneTarget;
-        account.MilestoneProgressValue = combinedPilotLevels;
-        account.MilestoneProgressText = unlockedSlotCount < MaxCharacterSlots
-            ? $"Reach Account LVL {GetCharacterSlotUnlockLevel(unlockedSlotCount + 1)} to unlock Slot {unlockedSlotCount + 1}. Current Account XP: {xpRemainder}/{xpToNextLevel}. Combined pilot levels: {combinedPilotLevels}/{nextMilestoneTarget}."
-            : $"All hangar slots are online. Current Account XP: {xpRemainder}/{xpToNextLevel}. Push your fleet to a combined pilot level of {nextMilestoneTarget}.";
+        account.MilestoneTitle = nextPilotUnlockLevel <= 0 ? "Pilot Unlocks Complete" : "Next Pilot Unlock";
+        account.MilestoneTargetValue = nextPilotUnlockLevel <= 0 ? highestPilotLevel : nextPilotUnlockLevel;
+        account.MilestoneProgressValue = highestPilotLevel;
+        account.MilestoneProgressText = nextPilotUnlockLevel <= 0
+            ? $"All pilot level unlocks are active. Highest pilot level: {highestPilotLevel}."
+            : $"Reach Pilot LVL {nextPilotUnlockLevel} to unlock {nextPilotUnlockNames}.";
 
         return account;
     }
@@ -249,35 +345,77 @@ public class GameController : ControllerBase
 
         if (slotId == 1)
         {
-            return "Create your first pilot. Pilot class unlocks at Level 3.";
+            return "Create your Main Pilot. Slot 1 stays classless and is boosted by support pilots.";
         }
 
         var requiredLevel = GetCharacterSlotUnlockLevel(slotId);
         return accountLevel >= requiredLevel
             ? $"Slot unlocked at Account LVL {requiredLevel}. Ready for a new pilot."
-            : $"Unlocks at Account LVL {requiredLevel}. Current Account LVL {accountLevel}. Combined pilot levels: {combinedPilotLevels}.";
+            : $"Unlocks at Account LVL {requiredLevel}.";
     }
 
-    private static string NormalizePilotClass(string? pilotClass) => pilotClass switch
+    private static string NormalizePilotClass(string? pilotClass) => (pilotClass ?? string.Empty).Trim() switch
     {
-        "Quartermaster" => "Quartermaster",
-        "Vanguard" => "Vanguard",
-        _ => "Prospector"
+        "Prospector" => "Pilot",
+        "Quartermaster" => "Gardener",
+        "Vanguard" => "Gambler",
+        "Pilot" => "Pilot",
+        "Gardener" => "Gardener",
+        "Gambler" => "Gambler",
+        _ => string.Empty
     };
 
     private static string GetDefaultPassiveJobForPilotClass(string pilotClass) => pilotClass switch
     {
-        "Quartermaster" => "hauling",
-        "Vanguard" => "reactor",
-        _ => "survey"
+        "Gardener" => "gardening",
+        "Gambler" => "gambling",
+        _ => "flying"
     };
 
-    private static string GetSkillTypeForPilotClass(string pilotClass) => pilotClass switch
+    private static string GetSkillTypeForPilotClass(string pilotClass) => NormalizePilotClass(pilotClass) switch
     {
-        "Quartermaster" => "logistics",
-        "Vanguard" => "reactor",
+        "Gardener" => "logistics",
+        "Gambler" => "reactor",
         _ => "mining"
     };
+
+    private static string NormalizePassiveJobKey(string? passiveJobKey, string? pilotClass = null)
+    {
+        var normalized = (passiveJobKey ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            var normalizedClass = NormalizePilotClass(pilotClass);
+            return string.IsNullOrWhiteSpace(normalizedClass)
+                ? string.Empty
+                : GetDefaultPassiveJobForPilotClass(normalizedClass);
+        }
+
+        return normalized switch
+        {
+            "survey" => "flying",
+            "hauling" => "gardening",
+            "reactor" => "gambling",
+            "flying" => "flying",
+            "gardening" => "gardening",
+            "gambling" => "gambling",
+            _ => normalized
+        };
+    }
+
+    private static string NormalizeTownBuildingKey(string? buildingKey)
+    {
+        var normalized = (buildingKey ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "survey-office" => "ship-upgrade",
+            "freight-depot" => "garden-upgrade",
+            "reactor-annex" => "better-loot-box",
+            "ship-upgrade" => "ship-upgrade",
+            "garden-upgrade" => "garden-upgrade",
+            "better-loot-box" => "better-loot-box",
+            _ => normalized
+        };
+    }
 
     private static int GetPilotSkillCost(string skillType, int currentLevel) => skillType switch
     {
@@ -302,7 +440,12 @@ public class GameController : ControllerBase
             .Select(otherPlayer => otherPlayer.PilotClass)
             .ToListAsync();
 
-        return PilotClasses.Where(pilotClass => !usedClasses.Contains(pilotClass, StringComparer.OrdinalIgnoreCase)).ToList();
+        var normalizedUsedClasses = usedClasses
+            .Select(NormalizePilotClass)
+            .Where(pilotClass => !string.IsNullOrWhiteSpace(pilotClass))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return PilotClasses.Where(pilotClass => !normalizedUsedClasses.Contains(pilotClass)).ToList();
     }
 
     private void AddBasePlayerState(Player player)
@@ -404,9 +547,14 @@ public class GameController : ControllerBase
 
         foreach (var player in players)
         {
+            if (player.CharacterSlot == 1 && !string.IsNullOrWhiteSpace(player.PilotClass))
+            {
+                player.PilotClass = string.Empty;
+                player.PassiveJobKey = string.Empty;
+            }
+
             await EnsurePlayerResearchAsync(player.PlayerID);
             await EnsurePlayerTownAsync(player);
-            await ApplyOfflineProgressAsync(player);
         }
 
         ApplyAccountProgress(account, players);
@@ -447,7 +595,7 @@ public class GameController : ControllerBase
         var clickPowerLevel = upgrades.FirstOrDefault(x => x.UpgradeType == "ClickPower")?.Level ?? 1;
         var autoKlickerLevel = upgrades.FirstOrDefault(x => x.UpgradeType == "Auto-Klicker")?.Level ?? 0;
         var miningResearchLevel = research.FirstOrDefault(x => x.ResearchType == "MiningEfficiency")?.Level ?? 0;
-        var pilotMiningBonus = string.Equals(player.PilotClass, "Prospector", StringComparison.OrdinalIgnoreCase)
+        var pilotMiningBonus = string.Equals(NormalizePilotClass(player.PilotClass), "Pilot", StringComparison.OrdinalIgnoreCase)
             ? 20 + (player.MiningSkillLevel * 6) + (player.MiningTreeLevel * 10)
             : 0;
         var multiplier = (1 + (miningResearchLevel * 0.15)) * (1 + (pilotMiningBonus / 100.0));
@@ -501,6 +649,8 @@ public class GameController : ControllerBase
     private async Task ApplyOfflineProgressAsync(Player player)
     {
         ResetOfflineReport(player);
+        player.PilotClass = NormalizePilotClass(player.PilotClass);
+        player.PassiveJobKey = NormalizePassiveJobKey(player.PassiveJobKey, player.PilotClass);
         await EnsurePlayerTownAsync(player);
 
         var now = DateTime.UtcNow;
@@ -532,40 +682,30 @@ public class GameController : ControllerBase
         if (offlineMinutes > 0)
         {
             var townLevels = await GetTownLevelMapAsync(player.PlayerID);
-            var reservePilots = await _dbContext.Players
-                .Where(x => x.AccountProfileID == player.AccountProfileID && x.PlayerID != player.PlayerID && !string.IsNullOrWhiteSpace(x.PilotClass))
-                .OrderBy(x => x.CharacterSlot)
-                .ToListAsync();
+            var result = ResolvePassiveJob(player, offlineMinutes, townLevels);
 
-            var dutySummaries = new List<string>();
-            foreach (var reservePilot in reservePilots)
+            if (result.Credits > 0)
             {
-                var result = ResolvePassiveJob(reservePilot, offlineMinutes, townLevels);
-                if (result.Credits > 0)
-                {
-                    player.Resource1 += result.Credits;
-                    player.OfflineCreditsGained += result.Credits;
-                }
+                player.Resource1 += result.Credits;
+                player.OfflineCreditsGained += result.Credits;
+            }
 
-                if (result.Fuel > 0)
-                {
-                    player.Resource2 += result.Fuel;
-                    player.OfflineFuelGained += result.Fuel;
-                }
+            if (result.Fuel > 0)
+            {
+                player.Resource2 += result.Fuel;
+                player.OfflineFuelGained += result.Fuel;
+            }
 
-                if (result.PlayerXp > 0)
-                {
-                    GrantPlayerProgress(player, result.PlayerXp);
-                    player.OfflinePlayerXpGained += result.PlayerXp;
-                }
+            if (result.Alloy > 0)
+            {
+                player.Resource3 += result.Alloy;
+                player.OfflineAlloyGained += result.Alloy;
+            }
 
-                if (result.CommanderXp > 0)
-                {
-                    GrantPlayerProgress(reservePilot, result.CommanderXp);
-                    player.OfflineReserveXpGained += result.CommanderXp;
-                }
-
-                dutySummaries.Add(result.Summary);
+            if (result.Biomass > 0)
+            {
+                player.Resource4 += result.Biomass;
+                player.OfflineBiomassGained += result.Biomass;
             }
 
             var summaryParts = new List<string>();
@@ -579,19 +719,35 @@ public class GameController : ControllerBase
                 summaryParts.Add($"+{player.OfflineFuelGained} Fuel");
             }
 
-            if (player.OfflinePlayerXpGained > 0)
+            if (player.OfflineAlloyGained > 0)
             {
-                summaryParts.Add($"+{player.OfflinePlayerXpGained} Player XP");
+                summaryParts.Add($"+{player.OfflineAlloyGained} Alloy");
             }
 
-            if (player.OfflineReserveXpGained > 0)
+            if (player.OfflineBiomassGained > 0)
             {
-                summaryParts.Add($"+{player.OfflineReserveXpGained} Reserve Pilot XP");
+                summaryParts.Add($"+{player.OfflineBiomassGained} Biomass");
             }
 
             if (summaryParts.Count > 0)
             {
-                player.OfflineSummary = $"Offline report ({offlineMinutes} min): {string.Join(" • ", summaryParts)}. {string.Join(" | ", dutySummaries.Take(2))}";
+                var dutyLine = result.Summary;
+                player.OfflineSummary = string.IsNullOrWhiteSpace(dutyLine)
+                    ? $"Offline report ({offlineMinutes} min): {string.Join(" • ", summaryParts)}"
+                    : $"Offline report ({offlineMinutes} min): {string.Join(" • ", summaryParts)}.\n{dutyLine}";
+            }
+
+            if (player.AccountProfileID > 0)
+            {
+                var account = await _dbContext.AccountProfiles.FirstOrDefaultAsync(x => x.AccountProfileID == player.AccountProfileID);
+                if (account is not null)
+                {
+                    var accountPlayers = await _dbContext.Players
+                        .Where(x => x.AccountProfileID == player.AccountProfileID)
+                        .ToListAsync();
+
+                    ApplyAccountProgress(account, accountPlayers);
+                }
             }
         }
 
@@ -625,8 +781,6 @@ public class GameController : ControllerBase
             LastActiveUtc = DateTime.UtcNow
         };
 
-        _dbContext.Players.Add(player);
-        await _dbContext.SaveChangesAsync();
         AddBasePlayerState(player);
         await _dbContext.SaveChangesAsync();
 
@@ -707,6 +861,9 @@ public class GameController : ControllerBase
     {
         var player = await GetOrCreatePlayerAsync(playerId);
         await ApplyOfflineProgressAsync(player);
+        var townLevels = await GetTownLevelMapAsync(player.PlayerID);
+        var lootBoostLevel = townLevels.GetValueOrDefault("better-loot-box", 0);
+        var lootRewardMultiplier = 1 + (lootBoostLevel * 0.10);
 
         if (player.Resource1 < 100)
         {
@@ -717,72 +874,70 @@ public class GameController : ControllerBase
 
         var rnd = new Random();
         var dice = rnd.Next(1, 101);
+        if (string.Equals(NormalizePilotClass(player.PilotClass), "Gambler", StringComparison.OrdinalIgnoreCase))
+        {
+            dice = Math.Min(100, dice + 8);
+        }
+
         string message;
         string icon;
+        var xpGained = 0;
 
         if (dice <= 33)
         {
-            var creditWin = rnd.Next(30, 96);
+            var creditWin = (int)Math.Ceiling(rnd.Next(30, 96) * lootRewardMultiplier);
             player.Resource1 += creditWin;
             icon = "🔩";
             message = $"Scrap haul: {creditWin} Credits recovered.";
         }
         else if (dice <= 58)
         {
-            var creditWin = rnd.Next(180, 361);
-            var xpWin = 18;
+            var creditWin = (int)Math.Ceiling(rnd.Next(180, 361) * lootRewardMultiplier);
+            var xpWin = (int)Math.Ceiling((18 + 9) * lootRewardMultiplier);
             player.Resource1 += creditWin;
-            player.XP += xpWin;
-            while (player.XP >= player.Level * 100)
-            {
-                player.XP -= player.Level * 100;
-                player.Level++;
-            }
+            GrantPlayerProgress(player, xpWin);
+            xpGained += xpWin;
 
             icon = "💎";
-            message = $"Data cache cracked: +{creditWin} Credits and +{xpWin} Pilot XP.";
+            message = $"Data cache cracked: +{creditWin} Credits and +{xpWin} XP.";
         }
         else if (dice <= 76)
         {
-            var alloyWin = rnd.Next(12, 31);
+            var alloyWin = (int)Math.Ceiling(rnd.Next(12, 31) * lootRewardMultiplier);
             player.Resource3 += alloyWin;
             icon = "🪨";
             message = $"Industrial crate: +{alloyWin} Alloy secured.";
         }
         else if (dice <= 90)
         {
-            var biomassWin = rnd.Next(16, 39);
+            var biomassWin = (int)Math.Ceiling(rnd.Next(16, 39) * lootRewardMultiplier);
             player.Resource4 += biomassWin;
             icon = "🧬";
             message = $"Bio pod stabilized: +{biomassWin} Biomass harvested.";
         }
         else if (dice <= 95)
         {
-            var fuelWin = rnd.Next(8, 21);
+            var fuelWin = (int)Math.Ceiling(rnd.Next(8, 21) * lootRewardMultiplier);
             player.Resource2 += fuelWin;
             icon = "🔋";
             message = $"Fuel cells recovered: +{fuelWin} Fuel.";
         }
         else
         {
-            const int creditWin = 900;
-            const int fuelWin = 35;
-            const int alloyWin = 70;
-            const int biomassWin = 90;
-            const int xpWin = 75;
+            var creditWin = (int)Math.Ceiling(900 * lootRewardMultiplier);
+            var fuelWin = (int)Math.Ceiling(35 * lootRewardMultiplier);
+            var alloyWin = (int)Math.Ceiling(70 * lootRewardMultiplier);
+            var biomassWin = (int)Math.Ceiling(90 * lootRewardMultiplier);
+            var xpWin = (int)Math.Ceiling((75 + 30) * lootRewardMultiplier);
             player.Resource1 += creditWin;
             player.Resource2 += fuelWin;
             player.Resource3 += alloyWin;
             player.Resource4 += biomassWin;
-            player.XP += xpWin;
-            while (player.XP >= player.Level * 100)
-            {
-                player.XP -= player.Level * 100;
-                player.Level++;
-            }
+            GrantPlayerProgress(player, xpWin);
+            xpGained += xpWin;
 
             icon = "⭐";
-            message = $"Legendary cache! +{creditWin} Credits, +{fuelWin} Fuel, +{alloyWin} Alloy, +{biomassWin} Biomass and +{xpWin} Pilot XP.";
+            message = $"Legendary cache! +{creditWin} Credits, +{fuelWin} Fuel, +{alloyWin} Alloy, +{biomassWin} Biomass, +{xpWin} XP.";
         }
 
         player.LastActiveUtc = DateTime.UtcNow;
@@ -795,6 +950,12 @@ public class GameController : ControllerBase
                 var accountPlayers = await _dbContext.Players
                     .Where(x => x.AccountProfileID == player.AccountProfileID)
                     .ToListAsync();
+
+                if (xpGained > 0)
+                {
+                    account.AccountXpBank += xpGained;
+                }
+
                 ApplyAccountProgress(account, accountPlayers);
             }
         }
@@ -810,10 +971,11 @@ public class GameController : ControllerBase
             NewResource3 = player.Resource3,
             NewResource4 = player.Resource4,
             NewPilotXP = player.XP,
-            NewPilotLevel = player.Level
+            NewPilotLevel = player.Level,
+            PilotXpGained = xpGained,
+            AccountXpGained = xpGained
         });
     }
-
     [HttpGet("game1")]
     [HttpGet("game1state")]
     public async Task<ActionResult<Game1State>> GetGame1State()
@@ -863,13 +1025,40 @@ public class GameController : ControllerBase
 
     [HttpGet("game2")]
     [HttpGet("game2state")]
-    public async Task<ActionResult<Game2State>> GetGame2State()
+    public async Task<ActionResult<Game2State>> GetGame2State([FromQuery] int? playerId = null)
     {
         _logger.LogInformation("Game2 state loaded");
-        var state = await _dbContext.Game2States.FirstOrDefaultAsync();
+
+        var resolvedPlayerId = Math.Max(0, playerId ?? 0);
+        if (resolvedPlayerId <= 0)
+        {
+            var legacyState = await _dbContext.Game2States.FirstOrDefaultAsync();
+            if (legacyState is null)
+            {
+                legacyState = new Game2State();
+                await _dbContext.Game2States.AddAsync(legacyState);
+                await _dbContext.SaveChangesAsync();
+            }
+
+            return legacyState;
+        }
+
+        var state = await _dbContext.Game2States.FirstOrDefaultAsync(existingState => existingState.PlayerID == resolvedPlayerId);
         if (state is null)
         {
-            state = new Game2State();
+            // Migrate an unassigned legacy row once so existing players keep progress.
+            var legacyUnassigned = await _dbContext.Game2States.FirstOrDefaultAsync(existingState => existingState.PlayerID <= 0);
+            if (legacyUnassigned is not null)
+            {
+                legacyUnassigned.PlayerID = resolvedPlayerId;
+                await _dbContext.SaveChangesAsync();
+                return legacyUnassigned;
+            }
+
+            state = new Game2State
+            {
+                PlayerID = resolvedPlayerId
+            };
             await _dbContext.Game2States.AddAsync(state);
             await _dbContext.SaveChangesAsync();
         }
@@ -877,16 +1066,27 @@ public class GameController : ControllerBase
         return state;
     }
 
-    [HttpPost("game2")]
     [HttpPost("savegame2state")]
-    public async Task<ActionResult<Game2State>> SaveGame2State(Game2State state)
+    public async Task<ActionResult<Game2State>> SaveGame2State(Game2State state, [FromQuery] int? playerId = null)
     {
         if (state == null)
         {
             return BadRequest("State is required.");
         }
 
-        var existing = await _dbContext.Game2States.FirstOrDefaultAsync();
+        var resolvedPlayerId = Math.Max(0, playerId ?? state.PlayerID);
+        state.PlayerID = resolvedPlayerId;
+
+        Game2State? existing;
+        if (resolvedPlayerId > 0)
+        {
+            existing = await _dbContext.Game2States.FirstOrDefaultAsync(existingState => existingState.PlayerID == resolvedPlayerId);
+        }
+        else
+        {
+            existing = await _dbContext.Game2States.FirstOrDefaultAsync(existingState => existingState.PlayerID <= 0);
+        }
+
         state.LastSaved = DateTime.UtcNow;
 
         if (existing is null)
@@ -902,6 +1102,7 @@ public class GameController : ControllerBase
             existing.ClickUpgradeLevel = state.ClickUpgradeLevel;
             existing.TotalClicks = state.TotalClicks;
             existing.LastSaved = state.LastSaved;
+            existing.PlayerID = state.PlayerID;
             existing.CargoUsed = state.CargoUsed;
             existing.CargoCapacity = state.CargoCapacity;
             existing.StoredOre = state.StoredOre;
@@ -1132,6 +1333,30 @@ public class GameController : ControllerBase
             return NotFound();
         }
 
+        var playerIds = await _dbContext.Players
+            .Where(player => player.AccountProfileID == accountId)
+            .Select(player => player.PlayerID)
+            .ToListAsync();
+
+        if (playerIds.Count > 0)
+        {
+            var game2States = await _dbContext.Game2States
+                .Where(state => playerIds.Contains(state.PlayerID))
+                .ToListAsync();
+            if (game2States.Count > 0)
+            {
+                _dbContext.Game2States.RemoveRange(game2States);
+            }
+
+            var game5States = await _dbContext.Game5States
+                .Where(state => playerIds.Contains(state.PlayerID))
+                .ToListAsync();
+            if (game5States.Count > 0)
+            {
+                _dbContext.Game5States.RemoveRange(game5States);
+            }
+        }
+
         _dbContext.AccountProfiles.Remove(account);
         await _dbContext.SaveChangesAsync();
         return NoContent();
@@ -1169,14 +1394,10 @@ public class GameController : ControllerBase
             return BadRequest("Character slot is already occupied.");
         }
 
-        var players = await _dbContext.Players
-            .Where(player => player.AccountProfileID == accountId)
-            .ToListAsync();
-        var highestLevel = players.Count == 0 ? 1 : players.Max(player => player.Level);
         var requiredLevel = GetCharacterSlotUnlockLevel(slotId);
-        if (slotId > 1 && highestLevel < requiredLevel)
+        if (slotId > 1 && account.AccountLevel < requiredLevel)
         {
-            return BadRequest($"Slot is locked until a character reaches LVL {requiredLevel}.");
+            return BadRequest($"Slot is locked until Account LVL {requiredLevel}.");
         }
 
         var player = new Player
@@ -1224,16 +1445,57 @@ public class GameController : ControllerBase
         return Ok(player);
     }
 
+    [HttpPost("player/{playerId:int}/offline-popup-seen")]
+    public async Task<ActionResult> MarkOfflinePopupSeen(int playerId)
+    {
+        var player = await _dbContext.Players.FirstOrDefaultAsync(existing => existing.PlayerID == playerId);
+        if (player is null)
+        {
+            return NotFound("Player not found.");
+        }
+
+        player.OfflinePopupSeenUtc = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPost("player/{playerId:int}/touch-last-active")]
+    public async Task<ActionResult> TouchLastActive(int playerId)
+    {
+        var player = await _dbContext.Players.FirstOrDefaultAsync(existing => existing.PlayerID == playerId);
+        if (player is null)
+        {
+            return NotFound("Player not found.");
+        }
+
+        player.LastActiveUtc = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
+        return NoContent();
+    }
+
     [HttpPost("player")]
     [HttpPost("saveplayer")]
     public async Task<ActionResult<Player>> SavePlayer(Player player)
     {
         var existing = await _dbContext.Players.FirstOrDefaultAsync(x => x.PlayerID == player.PlayerID);
+        var previousPilotContribution = existing is null ? 0 : GetPilotProgressContribution(existing);
         player.LastActiveUtc = DateTime.UtcNow;
+        var normalizedClass = NormalizePilotClass(player.PilotClass);
+        var isMainPilotSlot = (existing?.CharacterSlot ?? player.CharacterSlot) == 1;
+        if (isMainPilotSlot)
+        {
+            normalizedClass = string.Empty;
+        }
+
+        var normalizedPassiveJob = isMainPilotSlot
+            ? string.Empty
+            : NormalizePassiveJobKey(player.PassiveJobKey, normalizedClass);
         var accountProfileId = existing?.AccountProfileID ?? player.AccountProfileID;
 
         if (existing is null)
         {
+            player.PilotClass = normalizedClass;
+            player.PassiveJobKey = normalizedPassiveJob;
             _dbContext.Players.Add(player);
         }
         else
@@ -1246,8 +1508,8 @@ public class GameController : ControllerBase
             existing.XP = player.XP;
             existing.Level = player.Level;
             existing.PlayerShip = player.PlayerShip;
-            existing.PilotClass = player.PilotClass;
-            existing.PassiveJobKey = player.PassiveJobKey;
+            existing.PilotClass = normalizedClass;
+            existing.PassiveJobKey = normalizedPassiveJob;
             existing.MiningSkillLevel = player.MiningSkillLevel;
             existing.LogisticsSkillLevel = player.LogisticsSkillLevel;
             existing.ReactorSkillLevel = player.ReactorSkillLevel;
@@ -1259,11 +1521,20 @@ public class GameController : ControllerBase
 
         await _dbContext.SaveChangesAsync();
 
+        var updatedPlayer = existing ?? player;
+        var updatedPilotContribution = GetPilotProgressContribution(updatedPlayer);
+        var unifiedAccountXpDelta = Math.Max(0, updatedPilotContribution - previousPilotContribution);
+
         if (accountProfileId > 0)
         {
             var account = await _dbContext.AccountProfiles.FirstOrDefaultAsync(x => x.AccountProfileID == accountProfileId);
             if (account is not null)
             {
+                if (unifiedAccountXpDelta > 0)
+                {
+                    account.AccountXpBank += unifiedAccountXpDelta;
+                }
+
                 var accountPlayers = await _dbContext.Players
                     .Where(x => x.AccountProfileID == accountProfileId)
                     .ToListAsync();
@@ -1280,6 +1551,11 @@ public class GameController : ControllerBase
     public async Task<ActionResult<Player>> ChoosePilotClass(int playerId, string pilotClass)
     {
         var player = await GetOrCreatePlayerAsync(playerId);
+        if (player.CharacterSlot == 1)
+        {
+            return BadRequest("Slot 1 is the Main Pilot and cannot choose a class.");
+        }
+
         if (player.Level < 3)
         {
             return BadRequest("Pilot class unlocks at Level 3.");
@@ -1291,6 +1567,11 @@ public class GameController : ControllerBase
         }
 
         var normalizedClass = NormalizePilotClass(pilotClass);
+        if (string.IsNullOrWhiteSpace(normalizedClass))
+        {
+            return BadRequest("Unknown pilot class.");
+        }
+
         var availableClasses = await GetAvailablePilotClassesAsync(player);
         if (!availableClasses.Contains(normalizedClass, StringComparer.OrdinalIgnoreCase))
         {
@@ -1436,8 +1717,8 @@ public class GameController : ControllerBase
     [HttpPost("player/{playerId:int}/town/upgrade/{buildingKey}")]
     public async Task<ActionResult<List<PlayerTownBuilding>>> UpgradeTownBuilding(int playerId, string buildingKey)
     {
-        var normalizedKey = buildingKey.Trim().ToLowerInvariant();
-        if (normalizedKey is not ("survey-office" or "freight-depot" or "reactor-annex"))
+        var normalizedKey = NormalizeTownBuildingKey(buildingKey);
+        if (normalizedKey is not ("ship-upgrade" or "garden-upgrade" or "better-loot-box"))
         {
             return BadRequest("Unknown town building.");
         }
@@ -1446,22 +1727,24 @@ public class GameController : ControllerBase
         await EnsurePlayerTownAsync(player);
         await ApplyOfflineProgressAsync(player);
 
-        var building = await _dbContext.PlayerTownBuildings.FirstOrDefaultAsync(x => x.PlayerID == playerId && x.BuildingKey == normalizedKey);
+        var playerBuildings = await _dbContext.PlayerTownBuildings
+            .Where(x => x.PlayerID == playerId)
+            .ToListAsync();
+
+        var building = playerBuildings.FirstOrDefault(x => string.Equals(NormalizeTownBuildingKey(x.BuildingKey), normalizedKey, StringComparison.OrdinalIgnoreCase));
         if (building is null)
         {
             return NotFound();
         }
 
+        if (!string.Equals(building.BuildingKey, normalizedKey, StringComparison.OrdinalIgnoreCase))
+        {
+            building.BuildingKey = normalizedKey;
+        }
+
         if (building.Level >= 5)
         {
             return BadRequest("Building is already maxed.");
-        }
-
-        var townLevels = await GetTownLevelMapAsync(playerId);
-        var upgradeRequirement = GetTownUpgradeRequirement(normalizedKey, building.Level + 1, townLevels);
-        if (!string.IsNullOrWhiteSpace(upgradeRequirement))
-        {
-            return BadRequest(upgradeRequirement);
         }
 
         var creditCost = GetTownUpgradeCreditCost(normalizedKey, building.Level);
@@ -1564,37 +1847,9 @@ public class GameController : ControllerBase
     }
 
     [HttpPost("player/{playerId:int}/research/buy/{researchType}")]
-    public async Task<ActionResult<List<PlayerResearch>>> BuyResearch(int playerId, string researchType)
+    public ActionResult<List<PlayerResearch>> BuyResearch(int playerId, string researchType)
     {
-        var player = await GetOrCreatePlayerAsync(playerId);
-        await EnsurePlayerResearchAsync(playerId);
-        await ApplyOfflineProgressAsync(player);
-
-        var research = await _dbContext.PlayerResearch.FirstOrDefaultAsync(x => x.PlayerID == playerId && x.ResearchType == researchType);
-        if (research is null)
-        {
-            return NotFound();
-        }
-
-        var (fuelCost, biomassCost) = GetResearchCost(researchType, research.Level);
-        if (player.Resource2 < fuelCost || player.Resource4 < biomassCost)
-        {
-            return BadRequest("Not enough fuel or biomass.");
-        }
-
-        player.Resource2 -= fuelCost;
-        player.Resource4 -= biomassCost;
-        research.Level++;
-        player.LastActiveUtc = DateTime.UtcNow;
-
-        await _dbContext.SaveChangesAsync();
-
-        var updatedResearch = await _dbContext.PlayerResearch
-            .Where(x => x.PlayerID == playerId)
-            .OrderBy(x => x.ResearchType)
-            .ToListAsync();
-
-        return Ok(updatedResearch);
+        return BadRequest("Research upgrades are temporarily disabled.");
     }
 
     [HttpGet("player/{playerId:int}/farmplots")]

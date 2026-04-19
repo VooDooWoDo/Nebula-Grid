@@ -47,6 +47,7 @@ app.Run();
 static async Task EnsureSchemaUpdatedAsync(GameDbContext dbContext)
 {
     await EnsureAccountProfilesTableExistsAsync(dbContext);
+    await EnsureColumnExistsAsync(dbContext, "AccountProfiles", "AccountXpBank", "INTEGER NOT NULL DEFAULT 0");
     var lastActiveColumnAdded = await EnsureColumnExistsAsync(
         dbContext,
         "Player",
@@ -65,6 +66,7 @@ static async Task EnsureSchemaUpdatedAsync(GameDbContext dbContext)
     await EnsureColumnExistsAsync(dbContext, "Player", "MiningTreeLevel", "INTEGER NOT NULL DEFAULT 0");
     await EnsureColumnExistsAsync(dbContext, "Player", "LogisticsTreeLevel", "INTEGER NOT NULL DEFAULT 0");
     await EnsureColumnExistsAsync(dbContext, "Player", "ReactorTreeLevel", "INTEGER NOT NULL DEFAULT 0");
+    await EnsureColumnExistsAsync(dbContext, "Player", "OfflinePopupSeenUtc", "TEXT NULL");
 
     await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "CargoUsed", "INTEGER NOT NULL DEFAULT 0");
     await EnsureColumnExistsAsync(dbContext, "IdleGameStates", "CargoCapacity", "INTEGER NOT NULL DEFAULT 0");
@@ -338,7 +340,8 @@ static async Task EnsureAccountProfilesTableExistsAsync(GameDbContext dbContext)
 CREATE TABLE IF NOT EXISTS "AccountProfiles" (
     "AccountProfileID" INTEGER NOT NULL CONSTRAINT "PK_AccountProfiles" PRIMARY KEY AUTOINCREMENT,
     "AccountName" TEXT NOT NULL,
-    "CreatedUtc" TEXT NOT NULL
+    "CreatedUtc" TEXT NOT NULL,
+    "AccountXpBank" INTEGER NOT NULL DEFAULT 0
 );
 """;
         await createCommand.ExecuteNonQueryAsync();

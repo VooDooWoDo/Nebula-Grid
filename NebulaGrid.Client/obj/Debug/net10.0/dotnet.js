@@ -5,7 +5,7 @@ var e=!1;const t=async()=>WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,
   "mainAssemblyName": "NebulaGrid.Client",
   "applicationEnvironment": "Development",
   "resources": {
-    "hash": "sha256-R2vnyr0tLQsAFItl64KiTL1GkkBS8/u3ia6gT1Sf7gM=",
+    "hash": "sha256-tPl7p34mM0zpchekANc9PTteZJi/EzPwqZ4q40aYNiI=",
     "jsModuleNative": [
       {
         "name": "dotnet.native.ykrnppwhq2.js"
@@ -1242,28 +1242,28 @@ var e=!1;const t=async()=>WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,
       },
       {
         "virtualPath": "NebulaGrid.Shared.wasm",
-        "name": "NebulaGrid.Shared.qhmlg0nh1y.wasm",
-        "integrity": "sha256-4tqAOML8upO8u7Gg38FrPLagjAiQJo9SE+OM07HsTuY=",
+        "name": "NebulaGrid.Shared.po8xc4iazy.wasm",
+        "integrity": "sha256-OWZuSIdKkxRb6FEV2lXOzY3OinVmZafAJ0mAF2ixxZU=",
         "cache": "force-cache"
       },
       {
         "virtualPath": "NebulaGrid.Client.wasm",
-        "name": "NebulaGrid.Client.p636ilao9a.wasm",
-        "integrity": "sha256-obs+BhrBu2k36u34o8J5868Hl6EhHrGA1cbEt0TNqq8=",
+        "name": "NebulaGrid.Client.wpxnparvpg.wasm",
+        "integrity": "sha256-jGRqBkWdNIal2Z00/H8AIPyaM7K0QjaJrKwR00y6z4E=",
         "cache": "force-cache"
       }
     ],
     "pdb": [
       {
         "virtualPath": "NebulaGrid.Shared.pdb",
-        "name": "NebulaGrid.Shared.vcykqt1rfa.pdb",
-        "integrity": "sha256-76ikzSLNGytZQ2j77KIgCf6ALxFe+5evxMy/7h1G/Gc=",
+        "name": "NebulaGrid.Shared.lkpt7465ie.pdb",
+        "integrity": "sha256-S0JBYIz7fvTz5LWfwPpFm9g8NO3IhxD5vGzPBsgxEJU=",
         "cache": "force-cache"
       },
       {
         "virtualPath": "NebulaGrid.Client.pdb",
-        "name": "NebulaGrid.Client.2cwh1qtru4.pdb",
-        "integrity": "sha256-DmmhW3dlUsieuMiM8negW7mf+u1rgo+DBJc4VjtE4lA=",
+        "name": "NebulaGrid.Client.hrcltczaov.pdb",
+        "integrity": "sha256-Iy/4YGfOMDqsg+FFVPt5IdjcaVXYAWMx78t6q49uVSI=",
         "cache": "force-cache"
       }
     ],

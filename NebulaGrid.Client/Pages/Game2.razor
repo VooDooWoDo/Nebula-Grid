@@ -59,6 +59,11 @@
         cursor: pointer;
         z-index: 6;
     }
+    .station.needs-unload {
+        border-color: rgba(255, 214, 102, 0.95);
+        box-shadow: 0 0 36px rgba(255, 214, 102, 0.7), 0 0 12px rgba(255, 214, 102, 0.45), inset 0 0 20px rgba(255, 255, 255, 0.18);
+        animation: stationAlertPulse 1.1s ease-in-out infinite;
+    }
     .station::before {
         content: "";
         position: absolute;
@@ -140,6 +145,11 @@
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
     }
+
+    @@keyframes stationAlertPulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
 </style>
 
 <div class="game-container">
@@ -148,8 +158,8 @@
             @shipIcon
         </div>
 
-           <div class="station"
-               style="left: @(UnloadStationX)px; top: @(UnloadStationY)px; opacity: @((game2State.PendingResource2 > 0 || game2State.PendingResource3 > 0) ? "1" : "0.55");"
+           <div class="station @(ShouldHighlightDock() ? "needs-unload" : string.Empty)"
+               style="left: @(UnloadStationX)px; top: @(UnloadStationY)px; opacity: @(ShouldHighlightDock() ? "1" : "0.55");"
              title="Cargo Dock"
              @onclick:stopPropagation="true"
              @onclick="UnloadCargoAsync">
@@ -177,11 +187,6 @@
                 Unload Value: @game2State.PendingResource3 alloy • @game2State.PendingResource2 fuel
             </div>
 
-            <div style="margin-top: 12px;">
-                <button class="resource-select" @onclick="UnloadCargoAsync" @onclick:stopPropagation="true" disabled="@(game2State.PendingResource2 == 0 && game2State.PendingResource3 == 0)">
-                    Fly to dock and unload
-                </button>
-            </div>
         </div>
 
         @foreach (var ast in asteroids)
@@ -245,6 +250,7 @@
     {
         await LoadGame2State();
         await LoadShipStateAsync();
+        await LoadTownBonusesAsync();
         ApplyShipState();
         SpawnAsteroids();
     }
@@ -262,6 +268,18 @@
 
         ships = await HttpClient.GetFromJsonAsync<List<Ship>>("api/game/ships") ?? new List<Ship>();
         equippedShip = ships.FirstOrDefault(ship => ship.ShipID == PlayerService.CurrentShipId) ?? ships.FirstOrDefault();
+    }
+
+    private async Task LoadTownBonusesAsync()
+    {
+        if (PlayerService.SelectedPlayerId <= 0)
+        {
+            return;
+        }
+
+        var townBuildings = await HttpClient.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{PlayerService.SelectedPlayerId}/town")
+            ?? new List<PlayerTownBuilding>();
+        PlayerService.UpdateTownBuildings(townBuildings);
     }
 
     private void ApplyShipState()
@@ -289,11 +307,25 @@
     {
         try
         {
-            game2State = await HttpClient.GetFromJsonAsync<Game2State>("api/game/game2state") ?? new Game2State();
+            if (PlayerService.SelectedPlayerId > 0)
+            {
+                game2State = await HttpClient.GetFromJsonAsync<Game2State>($"api/game/game2state?playerId={PlayerService.SelectedPlayerId}") ?? new Game2State { PlayerID = PlayerService.SelectedPlayerId };
+            }
+            else
+            {
+                game2State = await HttpClient.GetFromJsonAsync<Game2State>("api/game/game2state") ?? new Game2State();
+            }
+
+            if (PlayerService.SelectedPlayerId > 0)
+            {
+                game2State.PlayerID = PlayerService.SelectedPlayerId;
+            }
         }
         catch
         {
-            game2State = new Game2State();
+            game2State = PlayerService.SelectedPlayerId > 0
+                ? new Game2State { PlayerID = PlayerService.SelectedPlayerId }
+                : new Game2State();
         }
     }
 
@@ -302,7 +334,15 @@
         try
         {
             game2State.LastSaved = DateTime.UtcNow;
-            await HttpClient.PostAsJsonAsync("api/game/savegame2state", game2State);
+            if (PlayerService.SelectedPlayerId > 0)
+            {
+                game2State.PlayerID = PlayerService.SelectedPlayerId;
+                await HttpClient.PostAsJsonAsync($"api/game/savegame2state?playerId={PlayerService.SelectedPlayerId}", game2State);
+            }
+            else
+            {
+                await HttpClient.PostAsJsonAsync("api/game/savegame2state", game2State);
+            }
         }
         catch (Exception ex)
         {
@@ -325,19 +365,22 @@
         ast.IsTarget = true;
         await MoveShipToAsync(ast.X - 15, ast.Y - 15);
 
-        var xpGain = selectedType == "R1" ? 10 : 12;
+        var asteroidBonus = IsAsteroidSpecialist() ? 1 : 0;
+        var xpGain = (selectedType == "R1" ? 10 : 12) + (asteroidBonus * 2);
 
         if (selectedType == "R1")
         {
-            game2State.StoredOre += OreCargoPerRun;
-            game2State.PendingResource3 += GetOreAlloyValue();
-            AddFloatingLoot($"+{OreCargoPerRun} Ore", GetShipLootX(), GetShipLootY(-12), "#f1c46a");
+            var oreGain = ApplyShipUpgradeCollectionBonus(OreCargoPerRun + asteroidBonus);
+            game2State.StoredOre += oreGain;
+            game2State.PendingResource3 += ApplyShipUpgradeCollectionBonus(GetOreAlloyValue() + asteroidBonus);
+            AddFloatingLoot($"+{oreGain} Ore", GetShipLootX(), GetShipLootY(-12), "#f1c46a");
         }
         else
         {
-            game2State.StoredFuel += FuelCargoPerRun;
-            game2State.PendingResource2 += BaseFuelValue;
-            AddFloatingLoot($"+{FuelCargoPerRun} Fuel", GetShipLootX(), GetShipLootY(-12), "#8fdcff");
+            var fuelGain = ApplyShipUpgradeCollectionBonus(FuelCargoPerRun + asteroidBonus);
+            game2State.StoredFuel += fuelGain;
+            game2State.PendingResource2 += ApplyShipUpgradeCollectionBonus(BaseFuelValue + asteroidBonus);
+            AddFloatingLoot($"+{fuelGain} Fuel", GetShipLootX(), GetShipLootY(-12), "#8fdcff");
         }
 
         SyncCargoUsed();
@@ -439,6 +482,23 @@
 
     private int GetOreAlloyValue() => BaseOreAlloyValue + Math.Max(0, PlayerService.MiningResearchLevel / 2);
 
+    private int ApplyShipUpgradeCollectionBonus(int baseAmount)
+    {
+        var shipUpgradeLevel = Math.Max(0, PlayerService.SurveyOfficeLevel);
+        if (shipUpgradeLevel == 0)
+        {
+            return baseAmount;
+        }
+
+        return (int)Math.Ceiling(baseAmount * (1 + (shipUpgradeLevel * 0.12)));
+    }
+
+    private bool IsAsteroidSpecialist()
+    {
+        var normalizedClass = (PlayerService.PilotClass ?? string.Empty).Trim();
+        return normalizedClass is "Prospector" or "Pilot";
+    }
+
     private double GetShipLootX() => posX + 30;
 
     private double GetShipLootY(double offset = 0) => posY + offset;
@@ -460,6 +520,16 @@
     private void SyncCargoUsed()
     {
         game2State.CargoUsed = game2State.StoredOre + game2State.StoredFuel;
+    }
+
+    private bool ShouldHighlightDock()
+    {
+        var selectedCargoCost = selectedType == "R1" ? OreCargoPerRun : FuelCargoPerRun;
+        var freeCapacity = Math.Max(0, game2State.CargoCapacity - game2State.CargoUsed);
+        var cargoPending = game2State.PendingResource2 > 0 || game2State.PendingResource3 > 0;
+        var cannotMineSelected = selectedCargoCost > freeCapacity;
+
+        return cargoPending && cannotMineSelected;
     }
 
     private void MigrateLegacyCargoState()

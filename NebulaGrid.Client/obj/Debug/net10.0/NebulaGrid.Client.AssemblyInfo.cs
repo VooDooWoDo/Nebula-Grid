@@ -12,11 +12,11 @@ using System.Reflection;
 
 [assembly: System.Reflection.AssemblyCompanyAttribute("NebulaGrid.Client")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
-[assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0-alpha+d643d098986293e23db54003badf28664cace624")]
+[assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.1.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.1-alpha.5+f6aa780d5140f09f76f8666a8eb914591d97d32a")]
 [assembly: System.Reflection.AssemblyProductAttribute("NebulaGrid.Client")]
 [assembly: System.Reflection.AssemblyTitleAttribute("NebulaGrid.Client")]
-[assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
+[assembly: System.Reflection.AssemblyVersionAttribute("1.0.1.0")]
 
 // Von der MSBuild WriteCodeFragment-Klasse generiert.
 

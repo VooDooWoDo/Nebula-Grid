@@ -23,7 +23,7 @@ else
             <div class="battlefield-header">
                 <div class="header-chip">Wave @game5State.WaveNumber</div>
                 <div class="header-chip">Wave Cap @GetWaveCap() / @MaxWaveNumber</div>
-                <div class="header-chip">Base @game5State.BaseIntegrity / 20</div>
+                <div class="header-chip">Base @game5State.BaseIntegrity / @MaxBaseIntegrity</div>
                 <div class="header-chip">Kills @game5State.EnemiesDefeated</div>
                 <div class="header-chip">Enemies @activeEnemies.Count / @totalEnemiesToSpawn</div>
             </div>
@@ -38,7 +38,7 @@ else
                 @foreach (var slot in towerSlots)
                 {
                     var blueprint = GetTower(slot.TowerKey);
-                    <button class="tower-slot @(selectedSlotIndex == slot.Index ? "selected" : string.Empty) @(slot.TowerKey is null ? "empty" : "filled")"
+                        <button class="tower-slot @(selectedSlotIndex == slot.Index ? "selected" : string.Empty) @(slot.TowerKey is null ? "empty" : "filled") @(slot.ShotTicks > 0 ? "firing" : string.Empty)"
                             style="left: @slot.X%; top: @slot.Y%;"
                             @onclick="() => SelectSlot(slot.Index)">
                         @if (blueprint is null)
@@ -47,6 +47,10 @@ else
                         }
                         else
                         {
+                            @if (slot.ShotTicks > 0)
+                            {
+                                <span class="shot-burst"></span>
+                            }
                             <div class="slot-stack">
                                 <span class="slot-icon">@blueprint.Icon</span>
                                 <small>@blueprint.Name</small>
@@ -57,18 +61,26 @@ else
 
                 @foreach (var enemy in activeEnemies)
                 {
-                    <div class="enemy-drone" @key="enemy" style="left: @GetEnemyX(enemy.Progress)%; top: 50%;">
+                    <div class="enemy-drone" @key="enemy" style="left: @GetEnemyXPercent(enemy.Progress); top: 50%;">
                         <span>🤖</span>
                         <div class="enemy-bar">
                             <div class="enemy-bar-fill" style="width: @GetEnemyHealthPercent(enemy)%"></div>
                         </div>
                     </div>
                 }
+
+                @foreach (var projectile in activeProjectiles)
+                {
+                    <div class="shot-projectile"
+                         @key="projectile.Id"
+                         style="--sx:@FormatPercent(projectile.StartX); --sy:@FormatPercent(projectile.StartY); --tx:@FormatPercent(projectile.TargetX); --ty:@FormatPercent(projectile.TargetY); --dur:@(projectile.DurationMs)ms;">
+                        <span>✦</span>
+                    </div>
+                }
             </div>
 
             <div class="battlefield-footer">
                 <button class="action-button start" @onclick="StartWaveAsync" disabled="@waveInProgress">Start wave</button>
-                <button class="action-button repair" @onclick="RepairBaseAsync" disabled="@(waveInProgress || game5State.BaseIntegrity >= 20 || PlayerService.Alloy < 8 || PlayerService.Biomass < 12)">Repair base (8 Alloy / 12 Biomass)</button>
                 <button class="action-button sell" @onclick="SellSelectedTowerAsync" disabled="@(selectedSlotIndex < 0 || towerSlots[selectedSlotIndex].TowerKey is null)">Sell selected tower</button>
             </div>
         </section>
@@ -77,6 +89,19 @@ else
             <div class="selection-panel">
                 <strong>Selected Slot</strong>
                 <p>@GetSelectedSlotText()</p>
+
+                @if (selectedSlotIndex >= 0 && towerSlots[selectedSlotIndex].TowerKey is null)
+                {
+                    var starterTower = towerCatalog[0];
+                    <div class="build-hint-card">
+                        <strong>Build Cost</strong>
+                        <p>@FormatTowerCost(starterTower)</p>
+                        @if (!CanAfford(starterTower))
+                        {
+                            <p class="cost-warning">@GetMissingCostText(starterTower)</p>
+                        }
+                    </div>
+                }
 
                 <div class="level-panel">
                     <div class="level-row">
@@ -92,6 +117,7 @@ else
                 @if (selectedSlotIndex >= 0 && towerSlots[selectedSlotIndex].TowerKey is not null)
                 {
                     var selectedSlot = towerSlots[selectedSlotIndex];
+                    var selectedTower = GetTower(selectedSlot.TowerKey);
                     var upgradeCost = GetUpgradeCost(selectedSlot);
                     <div class="level-panel tower-level-panel">
                         <div class="level-row">
@@ -125,9 +151,9 @@ else
                             </div>
                         </div>
                         <div class="tower-stats">
-                            <span>DMG @tower.Damage</span>
-                            <span>Range @tower.Range</span>
-                            <span>Rate @tower.CooldownTicks</span>
+                            <span>DMG @GetTowerDamageDisplay(tower)</span>
+                            <span>Range @GetTowerRangeDisplay(tower)</span>
+                            <span>Rate @GetTowerRateDisplay(tower)</span>
                         </div>
                         <div class="tower-costs">
                             @RenderCost("Credits", tower.CreditCost)
@@ -138,7 +164,7 @@ else
                         <button class="action-button build"
                                 @onclick="() => BuildTowerAsync(tower.Key)"
                                 disabled="@(selectedSlotIndex < 0 || !CanAfford(tower) || towerSlots[selectedSlotIndex].TowerKey is not null)">
-                            Build on selected slot
+                            @GetBuildButtonLabel(tower)
                         </button>
                     </article>
                 }
@@ -275,14 +301,33 @@ else
         box-shadow: 0 14px 24px rgba(0, 0, 0, 0.24);
     }
 
+    .tower-slot.firing {
+        border-color: rgba(146, 255, 198, 0.85);
+        box-shadow: 0 0 0 2px rgba(146, 255, 198, 0.25), 0 0 28px rgba(146, 255, 198, 0.45);
+    }
+
     .tower-slot.filled {
         border-style: solid;
     }
 
     .slot-stack {
+        position: relative;
         display: grid;
         gap: 4px;
         text-align: center;
+    }
+
+    .shot-burst {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        pointer-events: none;
+        background: radial-gradient(circle, rgba(255, 255, 195, 0.95), rgba(146, 255, 198, 0.65) 48%, rgba(146, 255, 198, 0) 74%);
+        transform: translate(-50%, -50%);
+        animation: shotPulse 0.35s ease-out;
     }
 
     .slot-icon,
@@ -316,6 +361,23 @@ else
     .enemy-bar-fill {
         height: 100%;
         background: linear-gradient(90deg, #ff6b9f, #ffc2d8);
+    }
+
+    .shot-projectile {
+        position: absolute;
+        left: var(--sx);
+        top: var(--sy);
+        translate: -50% -50%;
+        pointer-events: none;
+        z-index: 8;
+        animation: projectileFly var(--dur) linear forwards;
+    }
+
+    .shot-projectile span {
+        display: block;
+        font-size: 1rem;
+        color: #fff2af;
+        text-shadow: 0 0 10px rgba(255, 242, 175, 0.85), 0 0 20px rgba(146, 255, 198, 0.7);
     }
 
     .battlefield-footer {
@@ -410,10 +472,32 @@ else
         line-height: 1.4;
     }
 
+    .upgrade-preview {
+        color: #d3ffb0;
+        font-weight: 600;
+    }
+
     .tower-stats,
     .tower-costs {
         grid-template-columns: repeat(3, minmax(0, 1fr));
         margin-top: 12px;
+    }
+
+    .build-hint-card {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(159, 220, 255, 0.24);
+        background: rgba(8, 16, 30, 0.72);
+    }
+
+    .build-hint-card p {
+        margin: 6px 0 0;
+    }
+
+    .cost-warning {
+        color: #ffd48b;
+        font-weight: 600;
     }
 
     .tower-costs {
@@ -445,6 +529,38 @@ else
     .action-button.upgrade { margin-top: 12px; width: 100%; background: #c7f6a0; }
     .action-button.build { margin-top: 12px; width: 100%; background: #9fdcff; }
 
+    @@keyframes shotPulse {
+        0% {
+            opacity: 0.95;
+            transform: translate(-50%, -50%) scale(0.3);
+        }
+        100% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(1.9);
+        }
+    }
+
+    @@keyframes projectileFly {
+        0% {
+            opacity: 1;
+            left: var(--sx);
+            top: var(--sy);
+            transform: scale(0.8);
+        }
+        85% {
+            opacity: 1;
+            left: var(--tx);
+            top: var(--ty);
+            transform: scale(1);
+        }
+        100% {
+            opacity: 0;
+            left: var(--tx);
+            top: var(--ty);
+            transform: scale(1.1);
+        }
+    }
+
     @@media (max-width: 980px) {
         .defense-shell {
             grid-template-columns: 1fr;
@@ -462,7 +578,7 @@ else
 </style>
 
 @code {
-    private const int MaxBaseIntegrity = 20;
+    private const int MaxBaseIntegrity = 5;
     private const int MaxTowerLevel = 10;
     private const int MaxWaveNumber = 40;
     private readonly List<TowerBlueprint> towerCatalog =
@@ -472,6 +588,7 @@ else
 
     private readonly List<TowerSlotModel> towerSlots = new();
     private readonly List<DefenseEnemy> activeEnemies = new();
+    private readonly List<TowerProjectile> activeProjectiles = new();
     private readonly CancellationTokenSource loopCancellation = new();
     private Game5State game5State = new();
     private int selectedSlotIndex = -1;
@@ -480,6 +597,7 @@ else
     private int spawnedEnemies;
     private int spawnCooldown;
     private int hydratedPlayerId;
+    private int projectileIdCounter;
     private string message = "Build your line and hold the sector.";
 
     protected override async Task OnInitializedAsync()
@@ -504,8 +622,15 @@ else
 
     private async void HandleResourceChanged()
     {
-        await EnsureLoadedAsync();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await EnsureLoadedAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Game5 resource handler failed: {ex.Message}");
+        }
     }
 
     private async Task LoadPlayerAsync()
@@ -542,6 +667,11 @@ else
         }
 
         game5State.WaveNumber = Math.Clamp(game5State.WaveNumber, 1, MaxWaveNumber);
+        game5State.BaseIntegrity = Math.Clamp(game5State.BaseIntegrity, 0, MaxBaseIntegrity);
+        if (game5State.BaseIntegrity <= 0)
+        {
+            game5State.BaseIntegrity = MaxBaseIntegrity;
+        }
 
         ApplyTowerLayout();
     }
@@ -608,6 +738,8 @@ else
 
     private async Task StepBattleAsync()
     {
+        ResolveProjectiles();
+
         if (spawnedEnemies < totalEnemiesToSpawn)
         {
             spawnCooldown--;
@@ -621,6 +753,11 @@ else
 
         foreach (var slot in towerSlots)
         {
+            if (slot.ShotTicks > 0)
+            {
+                slot.ShotTicks--;
+            }
+
             if (string.IsNullOrWhiteSpace(slot.TowerKey))
             {
                 continue;
@@ -649,13 +786,10 @@ else
             }
 
             var damage = GetTowerDamage(slot, tower) + PlayerService.MiningResearchLevel;
-            target.Health -= damage;
-            if (tower.SlowTicks > 0)
-            {
-                target.SlowTicks = Math.Max(target.SlowTicks, tower.SlowTicks + PlayerService.LogisticsResearchLevel / 2);
-            }
+            QueueProjectileHit(slot, target, damage, tower.SlowTicks + PlayerService.LogisticsResearchLevel / 2);
 
             slot.CooldownTicks = GetTowerCooldownTicks(slot, tower);
+            slot.ShotTicks = 2;
         }
 
         var destroyedEnemies = activeEnemies.Where(enemy => enemy.Health <= 0).ToList();
@@ -733,6 +867,7 @@ else
         }
 
         activeEnemies.Clear();
+        activeProjectiles.Clear();
         spawnedEnemies = 0;
         totalEnemiesToSpawn = 5 + (game5State.WaveNumber * 2);
         spawnCooldown = 1;
@@ -772,6 +907,7 @@ else
     {
         waveInProgress = false;
         activeEnemies.Clear();
+        activeProjectiles.Clear();
         spawnedEnemies = 0;
         totalEnemiesToSpawn = 0;
         game5State.BaseIntegrity = MaxBaseIntegrity;
@@ -883,8 +1019,8 @@ else
 
         PlayerService.Alloy -= 8;
         PlayerService.Biomass -= 12;
-        game5State.BaseIntegrity = Math.Min(MaxBaseIntegrity, game5State.BaseIntegrity + 5);
-        message = "Repair drones restored 5 base integrity.";
+        game5State.BaseIntegrity = Math.Min(MaxBaseIntegrity, game5State.BaseIntegrity + 2);
+        message = "Repair drones restored 2 base integrity.";
 
         await SavePlayerAsync();
         await SaveGame5StateAsync();
@@ -951,6 +1087,21 @@ else
             && PlayerService.Biomass >= tower.BiomassCost;
     }
 
+    private string GetBuildButtonLabel(TowerBlueprint tower)
+    {
+        if (selectedSlotIndex < 0)
+        {
+            return "Select a slot first";
+        }
+
+        if (!string.IsNullOrWhiteSpace(towerSlots[selectedSlotIndex].TowerKey))
+        {
+            return "Selected slot occupied";
+        }
+
+        return $"Build ({GetTowerCostLabel(tower)})";
+    }
+
     private bool CanUpgrade(TowerSlotModel slot)
     {
         if (string.IsNullOrWhiteSpace(slot.TowerKey) || slot.Level >= MaxTowerLevel)
@@ -963,6 +1114,64 @@ else
     }
 
     private TowerBlueprint? GetTower(string? towerKey) => towerCatalog.FirstOrDefault(tower => string.Equals(tower.Key, towerKey, StringComparison.OrdinalIgnoreCase));
+
+    private string FormatTowerCost(TowerBlueprint tower)
+    {
+        var costParts = new List<string>();
+        if (tower.CreditCost > 0)
+        {
+            costParts.Add($"{tower.CreditCost} Credits");
+        }
+
+        if (tower.FuelCost > 0)
+        {
+            costParts.Add($"{tower.FuelCost} Fuel");
+        }
+
+        if (tower.AlloyCost > 0)
+        {
+            costParts.Add($"{tower.AlloyCost} Alloy");
+        }
+
+        if (tower.BiomassCost > 0)
+        {
+            costParts.Add($"{tower.BiomassCost} Biomass");
+        }
+
+        return costParts.Count == 0 ? "Free" : string.Join(" / ", costParts);
+    }
+
+    private string GetTowerCostLabel(TowerBlueprint tower) => FormatTowerCost(tower);
+
+    private string GetMissingCostText(TowerBlueprint tower)
+    {
+        var missing = new List<string>();
+        var missingCredits = Math.Max(0, tower.CreditCost - PlayerService.Resource1);
+        if (missingCredits > 0)
+        {
+            missing.Add($"{missingCredits} Credits");
+        }
+
+        var missingFuel = Math.Max(0, tower.FuelCost - PlayerService.Resource2);
+        if (missingFuel > 0)
+        {
+            missing.Add($"{missingFuel} Fuel");
+        }
+
+        var missingAlloy = Math.Max(0, tower.AlloyCost - PlayerService.Alloy);
+        if (missingAlloy > 0)
+        {
+            missing.Add($"{missingAlloy} Alloy");
+        }
+
+        var missingBiomass = Math.Max(0, tower.BiomassCost - PlayerService.Biomass);
+        if (missingBiomass > 0)
+        {
+            missing.Add($"{missingBiomass} Biomass");
+        }
+
+        return missing.Count == 0 ? "Ready to build." : $"Missing: {string.Join(" / ", missing)}";
+    }
 
     private string GetSelectedSlotText()
     {
@@ -1001,6 +1210,85 @@ else
         return Math.Max(1, tower.CooldownTicks - reactorBonus - levelBonus);
     }
 
+    private TowerSlotModel? GetSelectedSlotForTower(string towerKey)
+    {
+        if (selectedSlotIndex < 0 || selectedSlotIndex >= towerSlots.Count)
+        {
+            return null;
+        }
+
+        var slot = towerSlots[selectedSlotIndex];
+        return string.Equals(slot.TowerKey, towerKey, StringComparison.OrdinalIgnoreCase) ? slot : null;
+    }
+
+    private string GetTowerDamageDisplay(TowerBlueprint tower)
+    {
+        var selectedTowerSlot = GetSelectedSlotForTower(tower.Key);
+        if (selectedTowerSlot is null)
+        {
+            return tower.Damage.ToString();
+        }
+
+        var upgradedDamage = GetTowerDamage(selectedTowerSlot, tower);
+        return upgradedDamage == tower.Damage ? tower.Damage.ToString() : $"{tower.Damage}({upgradedDamage})";
+    }
+
+    private string GetTowerRangeDisplay(TowerBlueprint tower)
+    {
+        var selectedTowerSlot = GetSelectedSlotForTower(tower.Key);
+        if (selectedTowerSlot is null)
+        {
+            return tower.Range.ToString();
+        }
+
+        var upgradedRange = GetTowerRange(selectedTowerSlot, tower);
+        return upgradedRange == tower.Range ? tower.Range.ToString() : $"{tower.Range}({upgradedRange})";
+    }
+
+    private string GetTowerRateDisplay(TowerBlueprint tower)
+    {
+        var selectedTowerSlot = GetSelectedSlotForTower(tower.Key);
+        if (selectedTowerSlot is null)
+        {
+            return tower.CooldownTicks.ToString();
+        }
+
+        var upgradedRate = GetTowerCooldownTicks(selectedTowerSlot, tower);
+        return upgradedRate == tower.CooldownTicks ? tower.CooldownTicks.ToString() : $"{tower.CooldownTicks}({upgradedRate})";
+    }
+
+    private string GetUpgradePreviewText(TowerSlotModel slot, TowerBlueprint tower)
+    {
+        if (slot.Level >= MaxTowerLevel)
+        {
+            return "Max level reached.";
+        }
+
+        var currentStats = GetTowerStatsForLevel(slot.Level, tower);
+        var nextStats = GetTowerStatsForLevel(slot.Level + 1, tower);
+        var damageDelta = nextStats.Damage - currentStats.Damage;
+        var rangeDelta = nextStats.Range - currentStats.Range;
+        var cooldownDelta = currentStats.CooldownTicks - nextStats.CooldownTicks;
+
+        var cooldownText = cooldownDelta > 0
+            ? $"Cooldown -{cooldownDelta}"
+            : "Cooldown unchanged";
+
+        return $"Next upgrade: Damage +{damageDelta}, Range +{rangeDelta}, {cooldownText}.";
+    }
+
+    private TowerRuntimeStats GetTowerStatsForLevel(int level, TowerBlueprint tower)
+    {
+        var normalizedLevel = Math.Clamp(level, 1, MaxTowerLevel);
+        var reactorBonus = PlayerService.ReactorResearchLevel > 0 ? 1 : 0;
+        var levelBonus = (normalizedLevel - 1) / 3;
+
+        return new TowerRuntimeStats(
+            tower.Damage + ((normalizedLevel - 1) * 4),
+            tower.Range + ((normalizedLevel - 1) * 2),
+            Math.Max(1, tower.CooldownTicks - reactorBonus - levelBonus));
+    }
+
     private double GetDistance(TowerSlotModel slot, DefenseEnemy enemy)
     {
         var enemyX = GetEnemyX(enemy.Progress);
@@ -1010,6 +1298,62 @@ else
     }
 
     private double GetEnemyX(double progress) => 6 + (progress * 0.88);
+
+    private string GetEnemyXPercent(double progress)
+    {
+        var x = GetEnemyX(progress);
+        return $"{x.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}%";
+    }
+
+    private string FormatPercent(double percent) => $"{percent.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}%";
+
+    private void QueueProjectileHit(TowerSlotModel slot, DefenseEnemy target, int damage, int slowTicks)
+    {
+        var distance = GetDistance(slot, target);
+        var flightTicks = Math.Clamp((int)Math.Ceiling(distance / 18d), 2, 6);
+
+        activeProjectiles.Add(new TowerProjectile
+        {
+            Id = ++projectileIdCounter,
+            StartX = slot.X,
+            StartY = slot.Y,
+            TargetX = GetEnemyX(target.Progress),
+            TargetY = 50,
+            RemainingTicks = flightTicks,
+            DurationMs = flightTicks * 180,
+            Damage = damage,
+            SlowTicks = Math.Max(0, slowTicks),
+            Target = target
+        });
+    }
+
+    private void ResolveProjectiles()
+    {
+        if (activeProjectiles.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var projectile in activeProjectiles.ToList())
+        {
+            projectile.RemainingTicks--;
+            if (projectile.RemainingTicks > 0)
+            {
+                continue;
+            }
+
+            if (activeEnemies.Contains(projectile.Target))
+            {
+                projectile.Target.Health -= projectile.Damage;
+                if (projectile.SlowTicks > 0)
+                {
+                    projectile.Target.SlowTicks = Math.Max(projectile.Target.SlowTicks, projectile.SlowTicks);
+                }
+            }
+
+            activeProjectiles.Remove(projectile);
+        }
+    }
 
     private string GetEnemyHealthPercent(DefenseEnemy enemy)
     {
@@ -1043,6 +1387,8 @@ else
 
     private sealed record TowerBlueprint(string Key, string Name, string Description, string Icon, int CreditCost, int FuelCost, int AlloyCost, int BiomassCost, int Damage, int Range, int CooldownTicks, int SlowTicks, string Accent);
 
+    private sealed record TowerRuntimeStats(int Damage, int Range, int CooldownTicks);
+
     private sealed class TowerSlotModel
     {
         public TowerSlotModel(int index, double x, double y)
@@ -1058,6 +1404,7 @@ else
         public string? TowerKey { get; set; }
         public int Level { get; set; }
         public int CooldownTicks { get; set; }
+        public int ShotTicks { get; set; }
     }
 
     private sealed class DefenseEnemy
@@ -1067,5 +1414,19 @@ else
         public double MaxHealth { get; set; }
         public double Speed { get; set; }
         public int SlowTicks { get; set; }
+    }
+
+    private sealed class TowerProjectile
+    {
+        public int Id { get; set; }
+        public double StartX { get; set; }
+        public double StartY { get; set; }
+        public double TargetX { get; set; }
+        public double TargetY { get; set; }
+        public int RemainingTicks { get; set; }
+        public int DurationMs { get; set; }
+        public int Damage { get; set; }
+        public int SlowTicks { get; set; }
+        public DefenseEnemy Target { get; set; } = null!;
     }
 }

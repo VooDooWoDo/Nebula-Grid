@@ -23,14 +23,11 @@ else
 <div class="loot-container">
     <div class="loot-header">
         <h1>STELLAR CARGO</h1>
-        <p>Try your luck, Pilot! A container costs <strong>100 Credits</strong> and can now drop Credits, Fuel, Alloy, Biomass, or Pilot XP from premium data caches.</p>
+        <p>Try your luck, Pilot! A container costs <strong>100 Credits</strong> and can drop Credits, Fuel, Alloy, Biomass, or XP from premium data caches. Better Loot Box upgrades increase all rewards.</p>
     </div>
 
     <div class="resource-bar">
-        <span>Credits: <strong>@PlayerService.Resource1</strong></span>
-        <span>Fuel: <strong>@PlayerService.Resource2</strong></span>
-        <span>Alloy: <strong>@PlayerService.Alloy</strong></span>
-        <span>Biomass: <strong>@PlayerService.Biomass</strong></span>
+        <span>Loot Bonus: <strong>+@(PlayerService.ReactorAnnexLevel * 10)%</strong></span>
     </div>
 
     <div class="box-display">
@@ -257,8 +254,15 @@ else
 
     private async void HandleResourceChanged()
     {
-        await EnsureLoadedAsync();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await EnsureLoadedAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Lootbox resource handler failed: {ex.Message}");
+        }
     }
 
     private async Task LoadData()
@@ -267,6 +271,10 @@ else
         {
             return;
         }
+
+        var townBuildings = await Http.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{PlayerService.SelectedPlayerId}/town")
+            ?? new List<PlayerTownBuilding>();
+        PlayerService.UpdateTownBuildings(townBuildings);
 
         var player = await Http.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
         if (player is not null)
@@ -307,6 +315,7 @@ else
             if (result != null)
             {
                 message = result.Message;
+
                 lastWinIcon = result.Icon;
                 PlayerService.Resource1 = result.NewResource1;
                 PlayerService.Resource2 = result.NewResource2;

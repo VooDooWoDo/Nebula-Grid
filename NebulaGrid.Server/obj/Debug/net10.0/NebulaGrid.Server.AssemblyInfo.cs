@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("NebulaGrid.Server")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d643d098986293e23db54003badf28664cace624")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f6aa780d5140f09f76f8666a8eb914591d97d32a")]
 [assembly: System.Reflection.AssemblyProductAttribute("NebulaGrid.Server")]
 [assembly: System.Reflection.AssemblyTitleAttribute("NebulaGrid.Server")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

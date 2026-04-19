@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NebulaGrid.Client</title>
+    <base href="/" />
+    <link rel="preload" id="webassembly" />
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="NebulaGrid.Client.styles.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <script>
+        (function () {
+            const statusElement = document.querySelector('.loading-progress-text');
+            let bootCompleted = false;
+
+            function setStatus(message, isError) {
+                if (!statusElement) {
+                    return;
+                }
+
+                statusElement.textContent = message;
+                if (isError) {
+                    statusElement.classList.add('startup-error');
+                }
+            }
+
+            function hasBootCompleted() {
+                const app = document.getElementById('app');
+                if (!app) {
+                    return false;
+                }
+
+                return !app.querySelector('.loading-progress');
+            }
+
+            const bootProbe = window.setInterval(function () {
+                if (hasBootCompleted()) {
+                    bootCompleted = true;
+                    window.clearInterval(bootProbe);
+                }
+            }, 500);
+
+            window.addEventListener('error', function (event) {
+                const message = event && event.message ? event.message : 'Unknown startup error.';
+                setStatus('Startup error: ' + message, true);
+            });
+
+            window.addEventListener('unhandledrejection', function (event) {
+                const reason = event && event.reason ? String(event.reason) : 'Unhandled promise rejection.';
+                setStatus('Startup error: ' + reason, true);
+            });
+
+            window.setTimeout(function () {
+                if (!bootCompleted && !hasBootCompleted()) {
+                    setStatus('Startup timeout. Try Ctrl+F5. If this repeats, disable browser extensions for localhost.', true);
+                }
+            }, 15000);
+        })();
+    </script>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+    <script src="js/nebulaStorage.js"></script>
+    <script src="_framework/blazor.webassembly.js?v=20260418-2" autostart="false"></script>
+    <script>
+        Blazor.start({
+            loadBootResource: function (type, name, defaultUri) {
+                // Debug symbol downloads can 404 during watch/hash transitions; skip them to keep app startup reliable.
+                if (type === 'pdb') {
+                    return null;
+                }
+
+                return defaultUri;
+            }
+        }).catch(function (error) {
+            const statusElement = document.querySelector('.loading-progress-text');
+            if (statusElement) {
+                statusElement.textContent = 'Startup error: ' + String(error);
+                statusElement.classList.add('startup-error');
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -25,9 +25,9 @@ else
 
 <div class="orion-viewport">
     <div class="hud-top">
-        <div class="info-badge">SEKTOR: ORION-NEBEL</div>
-        <div class="multiplier-badge">KLICK-KRAFT: @GetClickPower()</div>
-        <div class="multiplier-badge">REAKTOR-FORSCHUNG: +@PlayerService.BonusCritChance% Krit</div>
+        <div class="info-badge">SECTOR: ORION NEBULA</div>
+        <div class="multiplier-badge">CLICK POWER: @GetClickPower()</div>
+        <div class="multiplier-badge">REACTOR RESEARCH: +@PlayerService.BonusCritChance% Crit</div>
     </div>
 
     <div class="click-area">
@@ -44,7 +44,7 @@ else
 
     <div class="click-feedback">
         <h2 class="reward-text">@message</h2>
-        <p class="sub-text">Extrahiere Plasma-Energie durch Interaktion</p>
+        <p class="sub-text">Extract plasma energy by interacting with the core.</p>
     </div>
     <div class="upgrade-list">
         @foreach (var upgrade in activeUpgrades)
@@ -57,7 +57,7 @@ else
                 <button class="btn-buy"
                         @onclick="() => BuyUpgrade(upgrade)"
                         disabled="@(PlayerService.Resource1 < upgrade.Cost)">
-                    Kaufen (@upgrade.Cost Credits)
+                    Buy (@upgrade.Cost Credits)
                 </button>
             </div>
         }
@@ -207,6 +207,9 @@ else
 </style>
 
 @code {
+    private const string AutoClickerUpgradeType = "Auto-Clicker";
+    private const string AutoClickerLegacyUpgradeType = "Auto-Klicker";
+
     private int r1
     {
         get => PlayerService.Resource1;
@@ -215,6 +218,7 @@ else
 
     private string message = "System ready";
     private bool isClicking = false;
+    private int clickPulseVersion = 0;
     private int totalClicks = 0;
     private List<ClickPopup> popups = new();
     private List<UpgradeInfo> activeUpgrades = new();
@@ -245,8 +249,15 @@ else
 
     private async void HandleResourceChanged()
     {
-        await EnsureLoadedAsync();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await EnsureLoadedAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Game4 resource handler failed: {ex.Message}");
+        }
     }
 
     private async Task LoadPlayerStateAsync()
@@ -268,7 +279,7 @@ else
         activeUpgrades.Clear();
         activeUpgrades.Add(new UpgradeInfo { Type = "ClickPower", Level = 1 });
         activeUpgrades.Add(new UpgradeInfo { Type = "Crit-Chance", Level = PlayerService.CritChanceLevel });
-        activeUpgrades.Add(new UpgradeInfo { Type = "Auto-Klicker", Level = PlayerService.AutoKlickerLevel });
+        activeUpgrades.Add(new UpgradeInfo { Type = AutoClickerUpgradeType, Level = PlayerService.AutoKlickerLevel });
     }
 
     private async Task LoadResearchAsync()
@@ -293,7 +304,10 @@ else
         var upgrades = await HttpClient.GetFromJsonAsync<List<PlayerUpgrade>>($"api/game/player/{PlayerService.SelectedPlayerId}/upgrades") ?? new List<PlayerUpgrade>();
         foreach (var upgrade in upgrades)
         {
-            var localUpgrade = activeUpgrades.FirstOrDefault(x => x.Type == upgrade.UpgradeType);
+            var upgradeType = upgrade.UpgradeType == AutoClickerLegacyUpgradeType
+                ? AutoClickerUpgradeType
+                : upgrade.UpgradeType;
+            var localUpgrade = activeUpgrades.FirstOrDefault(x => x.Type == upgradeType);
             if (localUpgrade is not null)
             {
                 localUpgrade.Level = upgrade.Level;
@@ -301,7 +315,7 @@ else
         }
 
         PlayerService.ClickPowerLevel = activeUpgrades.First(x => x.Type == "ClickPower").Level;
-        PlayerService.AutoKlickerLevel = activeUpgrades.First(x => x.Type == "Auto-Klicker").Level;
+        PlayerService.AutoKlickerLevel = activeUpgrades.First(x => x.Type == AutoClickerUpgradeType).Level;
         PlayerService.CritChanceLevel = activeUpgrades.First(x => x.Type == "Crit-Chance").Level;
     }
 
@@ -377,8 +391,8 @@ else
 
     private async Task HandleClick(MouseEventArgs e)
     {
-        if (isClicking) return;
         isClicking = true;
+        var pulseVersion = ++clickPulseVersion;
 
         try
         {
@@ -399,17 +413,25 @@ else
             await SaveStatsAsync(power);
             Status.NotifyResourceChanged();
             _ = RemovePopupAfterDelay(newPop, 800);
+            _ = ResetClickPulseAsync(pulseVersion);
         }
         catch (Exception ex)
         {
             message = "Error: " + ex.Message;
             Console.WriteLine(ex.Message);
         }
-        finally
+    }
+
+    private async Task ResetClickPulseAsync(int pulseVersion)
+    {
+        await Task.Delay(100);
+        if (pulseVersion != clickPulseVersion)
         {
-            await Task.Delay(100);
-            isClicking = false;
+            return;
         }
+
+        isClicking = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task RemovePopupAfterDelay(ClickPopup popup, int delay)
@@ -426,7 +448,7 @@ else
         r1 -= upgrade.Cost;
         upgrade.Level++;
 
-        if (upgrade.Type == "Auto-Klicker") PlayerService.AutoKlickerLevel = upgrade.Level;
+        if (upgrade.Type == AutoClickerUpgradeType) PlayerService.AutoKlickerLevel = upgrade.Level;
         if (upgrade.Type == "ClickPower") PlayerService.ClickPowerLevel = upgrade.Level;
         if (upgrade.Type == "Crit-Chance") PlayerService.CritChanceLevel = upgrade.Level;
 
@@ -444,7 +466,7 @@ else
         public int Level { get; set; }
         public int Cost => Type switch
         {
-            "Auto-Klicker" => (Level + 1) * 500,
+            AutoClickerUpgradeType => (Level + 1) * 500,
             "Crit-Chance" => (Level + 1) * 300,
             _ => (Level + 1) * 150,
         };

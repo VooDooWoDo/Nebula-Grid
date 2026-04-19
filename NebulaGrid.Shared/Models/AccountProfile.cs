@@ -7,6 +7,7 @@ public class AccountProfile
     public int AccountProfileID { get; set; }
     public string AccountName { get; set; } = string.Empty;
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public int AccountXpBank { get; set; }
 
     [NotMapped]
     public int AccountLevel { get; set; } = 1;

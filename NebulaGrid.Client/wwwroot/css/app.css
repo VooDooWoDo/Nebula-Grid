@@ -452,10 +452,20 @@ body {
     text-align: center;
     font-weight: bold;
     inset: calc(20vh + 3.25rem) 0 auto 0.2rem;
+    max-width: min(90vw, 720px);
+    margin: 0 auto;
+    white-space: pre-line;
 }
 
-    .loading-progress-text:after {
+    .loading-progress-text:empty:after {
         content: var(--blazor-load-percentage-text, "Loading");
+    }
+
+    .loading-progress-text.startup-error {
+        color: #ff9b9b;
+        font-size: 0.95rem;
+        font-weight: 700;
+        text-shadow: 0 0 18px rgba(255, 88, 88, 0.35);
     }
 
 code {

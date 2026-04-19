@@ -1,5 +1,7 @@
+@page "/"
 @page "/galaxy"
 @using NebulaGrid.Shared.Services
+@inject HttpClient HttpClient
 @inject ShipService ShipService
 @inject NavigationManager NavManager
 @inject PlayerService PlayerService
@@ -20,6 +22,42 @@
         </div>
     }
 
+    @if (isOfflineGainPopupOpen && offlineGainPopup is not null)
+    {
+        <div class="galaxy-popup-backdrop" @onclick="DismissOfflineGainPopupAsync">
+            <div class="galaxy-popup-card" @onclick:stopPropagation="true">
+                <div class="galaxy-popup-head">
+                    <div>
+                        <p class="galaxy-popup-tag">Offline Progress</p>
+                        <h2>@offlineGainPopup.PilotName</h2>
+                    </div>
+                    <button class="galaxy-popup-close" type="button" @onclick="DismissOfflineGainPopupAsync">Close</button>
+                </div>
+
+                <p class="galaxy-popup-copy">While this pilot was offline, you earned:</p>
+
+                <div class="galaxy-popup-metrics">
+                    <div class="galaxy-popup-pill"><strong>Credits 💠</strong><span>+@offlineGainPopup.Credits</span></div>
+                    <div class="galaxy-popup-pill"><strong>Fuel ⛽</strong><span>+@offlineGainPopup.Fuel</span></div>
+                    <div class="galaxy-popup-pill"><strong>Alloy 🪨</strong><span>+@offlineGainPopup.Alloy</span></div>
+                    <div class="galaxy-popup-pill"><strong>Biomass 🧬</strong><span>+@offlineGainPopup.Biomass</span></div>
+                </div>
+
+                @if (offlineGainPopup.BioDomeUnlocked && offlineGainPopup.ReadyBioDomePlants > 0)
+                {
+                    <div class="galaxy-popup-note">Bio Dome: @offlineGainPopup.ReadyBioDomePlants plant(s) are ready to harvest.</div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(offlineGainPopup.OfflineSummary))
+                {
+                    <div class="galaxy-popup-note">@offlineGainPopup.OfflineSummary</div>
+                }
+
+                <button class="galaxy-popup-continue" @onclick="DismissOfflineGainPopupAsync">Continue</button>
+            </div>
+        </div>
+    }
+
     @* 2. Die Karte (Nur auf der Home-Seite) *@
     @if (IsOnMapPage)
     {
@@ -28,16 +66,16 @@
             {
                 <div class="map-info-hover">
                     <div class="map-info-chip">
-                        <span class="map-info-label">Account Goal</span>
-                        <strong>@PlayerService.AccountMilestoneTitle</strong>
-                        <span>@PlayerService.AccountXP / @PlayerService.AccountXPToNextLevel XP</span>
+                        <span class="map-info-label">Pilot Goal</span>
+                        <strong>@GetPilotGoalTitle()</strong>
+                        <span>@PlayerService.CurrentXP / @PlayerService.PilotXPToNextLevel Player XP</span>
                     </div>
                     <div class="map-info-popover">
-                        <p class="map-info-kicker">@PlayerService.AccountProgressSummary</p>
-                        <strong>@PlayerService.AccountMilestoneTitle</strong>
-                        <p>@PlayerService.AccountMilestoneProgressText</p>
-                        <p>Account Bonus: +@PlayerService.AccountCreditBonusPercent% Credits</p>
-                        <p>@PlayerService.AccountUnlockedSlotCount/3 Slots unlocked</p>
+                        <p class="map-info-kicker">@GetPilotProgressSummary()</p>
+                        <strong>@GetPilotGoalTitle()</strong>
+                        <p>@GetPilotGoalProgressText()</p>
+                        <p>Class: @PlayerService.CommanderSummary</p>
+                        <p>@PlayerService.CommanderTraitSummary</p>
                     </div>
                 </div>
             }
@@ -54,14 +92,11 @@
                     <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("game1")</div>
                 }
             </div>
-            <div class="planet-container theme-academy" style="left: 18%; top: 72%;" @onclick='() => TravelTo("/academy", 18, 72)'>
+            <div class="planet-container theme-academy @(GetPlanetStateClass("academy"))" style="left: 18%; top: 72%;" @onclick='() => TryTravelTo("academy", "/academy", 18, 72)'>
                 <div class="planet-icon">🎓</div><div class="planet-name">Pilot Academy</div>
-            </div>
-            <div class="planet-container theme-town @(GetPlanetStateClass("town"))" style="left: 54%; top: 74%;" @onclick='() => TryTravelTo("town", "/town", 54, 74)'>
-                <div class="planet-icon">🏙️</div><div class="planet-name">Frontier Hub</div>
-                @if (!PlayerService.IsAreaUnlocked("town"))
+                @if (!PlayerService.IsAreaUnlocked("academy"))
                 {
-                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("town")</div>
+                    <div class="planet-lock">LVL @PlayerService.GetRequiredLevelForArea("academy")</div>
                 }
             </div>
             <div class="planet-container theme-asteroid @(GetPlanetStateClass("game2"))" style="left: 40%; top: 50%;" @onclick='() => TryTravelTo("game2", "/game2", 40, 50)'>
@@ -128,7 +163,7 @@
     }
     else 
     {
-        @* Kleiner Button für die Rückkehr, falls man sich verirrt *@
+        @* Small fallback button to return to the map *@
         <div class="back-to-map-btn" style="position: absolute; top: 20px; left: 20px; z-index: 3000;">
             <button class="nav-back-button" @onclick='() => NavManager.NavigateTo("/")'> to map </button>
         </div>
@@ -136,6 +171,11 @@
 </div>
 
 <style>
+    html:has(.cockpit-container.full-screen),
+    body:has(.cockpit-container.full-screen) {
+        overflow-y: hidden;
+    }
+
     .mini-bar { height: 120px !important; pointer-events: none; }
     .mini-bar .back-to-map-btn { pointer-events: all; }
     .full-screen {
@@ -300,6 +340,93 @@
         letter-spacing: 0.08em;
     }
 
+    .galaxy-popup-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1500;
+        background: rgba(3, 8, 15, 0.6);
+        backdrop-filter: blur(5px);
+        display: grid;
+        place-items: center;
+    }
+
+    .galaxy-popup-card {
+        width: min(620px, calc(100vw - 24px));
+        padding: 18px;
+        border-radius: 18px;
+        border: 1px solid rgba(143, 220, 255, 0.3);
+        background: linear-gradient(150deg, rgba(8, 16, 28, 0.98), rgba(12, 22, 38, 0.98));
+        color: #eef7ff;
+        box-shadow: 0 22px 50px rgba(0, 0, 0, 0.4);
+    }
+
+    .galaxy-popup-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: start;
+    }
+
+    .galaxy-popup-head h2 {
+        margin: 0;
+    }
+
+    .galaxy-popup-tag {
+        margin: 0 0 4px;
+        color: #8fdcff;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.72rem;
+    }
+
+    .galaxy-popup-close,
+    .galaxy-popup-continue {
+        border: none;
+        border-radius: 10px;
+        padding: 9px 12px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .galaxy-popup-close {
+        background: rgba(255, 255, 255, 0.1);
+        color: #eaf4ff;
+    }
+
+    .galaxy-popup-copy {
+        margin: 12px 0;
+        color: rgba(238, 247, 255, 0.82);
+    }
+
+    .galaxy-popup-metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 8px;
+    }
+
+    .galaxy-popup-pill {
+        display: grid;
+        gap: 4px;
+        padding: 10px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(143, 220, 255, 0.18);
+    }
+
+    .galaxy-popup-note {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(238, 247, 255, 0.86);
+    }
+
+    .galaxy-popup-continue {
+        margin-top: 12px;
+        background: #8fdcff;
+        color: #07111d;
+    }
+
     @@media (max-width: 820px) {
         .map-info-hover {
             top: 14px;
@@ -322,6 +449,19 @@
 </style>
 
 @code {
+    private static readonly (string AreaKey, string DisplayName)[] PilotUnlockAreas =
+    [
+        ("game1", "Command Nexus"),
+        ("game2", "Asteroid Belt"),
+        ("ships", "Hangar"),
+        ("lootbox", "Stellar Cargo"),
+        ("academy", "Pilot Academy"),
+        ("game3", "Bio Dome"),
+        ("research", "Research Lab"),
+        ("game4", "Reactor Core"),
+        ("game5", "Defense Grid")
+    ];
+
     private bool IsOnMapPage => NavManager.Uri.EndsWith("/") || NavManager.Uri.EndsWith("galaxy");
     
     // NEU: Erkennt, ob wir gerade auf der Auswahlseite sind
@@ -330,13 +470,74 @@
     private int shipX = 50, shipY = 50;
     private bool isFlipped = false, isTraveling = false, showLandingDialog = false;
     private string? pendingTarget;
+    private bool isOfflineGainPopupOpen;
+    private PlayerService.PendingOfflinePopup? offlineGainPopup;
 
     protected override void OnInitialized() {
-        NavManager.LocationChanged += (s, e) => StateHasChanged();
+        NavManager.LocationChanged += HandleLocationChanged;
         Status.OnResourceChanged += HandleUpdate;
+        TryOpenPendingOfflinePopup();
     }
-    private async void HandleUpdate() => await InvokeAsync(StateHasChanged);
-    public void Dispose() => Status.OnResourceChanged -= HandleUpdate;
+    private async void HandleUpdate()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Galaxy update handler failed: {ex.Message}");
+        }
+    }
+    public void Dispose()
+    {
+        NavManager.LocationChanged -= HandleLocationChanged;
+        Status.OnResourceChanged -= HandleUpdate;
+    }
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        TryOpenPendingOfflinePopup();
+        StateHasChanged();
+    }
+
+    private void TryOpenPendingOfflinePopup()
+    {
+        if (!IsOnMapPage || isOfflineGainPopupOpen)
+        {
+            return;
+        }
+
+        var pending = PlayerService.ConsumePendingOfflinePopup();
+        if (pending is null)
+        {
+            return;
+        }
+
+        offlineGainPopup = pending;
+        isOfflineGainPopupOpen = true;
+    }
+
+    private async Task DismissOfflineGainPopupAsync()
+    {
+        var popupPlayerId = offlineGainPopup?.PlayerId ?? 0;
+        isOfflineGainPopupOpen = false;
+        offlineGainPopup = null;
+
+        if (popupPlayerId <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await HttpClient.PostAsync($"api/game/player/{popupPlayerId}/offline-popup-seen", null);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Could not persist offline popup seen timestamp from galaxy: {ex.Message}");
+        }
+    }
 
     private async Task TravelTo(string t, int x, int y) {
         if (isTraveling) return;
@@ -357,6 +558,68 @@
     }
 
     private string GetPlanetStateClass(string areaKey) => PlayerService.IsAreaUnlocked(areaKey) ? string.Empty : "locked";
+
+    private string GetPilotProgressSummary()
+        => $"Pilot LVL {PlayerService.CurrentLevel} • {PlayerService.CurrentXP}/{PlayerService.PilotXPToNextLevel} Player XP";
+
+    private string GetPilotGoalTitle()
+    {
+        var nextUnlock = GetNextPilotUnlock(PlayerService.CurrentLevel);
+        return nextUnlock is null ? "Pilot Unlocks Complete" : "Next Pilot Unlock";
+    }
+
+    private string GetPilotGoalProgressText()
+    {
+        var nextUnlock = GetNextPilotUnlock(PlayerService.CurrentLevel);
+        return nextUnlock is null
+            ? "All pilot level area unlocks are active for this pilot."
+            : $"Reach Pilot LVL {nextUnlock.Value.Level} to unlock {FormatAreaList(nextUnlock.Value.Areas)}.";
+    }
+
+    private (int Level, List<string> Areas)? GetNextPilotUnlock(int currentLevel)
+    {
+        var nextLevel = int.MaxValue;
+        foreach (var area in PilotUnlockAreas)
+        {
+            var requiredLevel = PlayerService.GetRequiredLevelForArea(area.AreaKey);
+            if (requiredLevel > currentLevel && requiredLevel < nextLevel)
+            {
+                nextLevel = requiredLevel;
+            }
+        }
+
+        if (nextLevel == int.MaxValue)
+        {
+            return null;
+        }
+
+        var areas = PilotUnlockAreas
+            .Where(area => PlayerService.GetRequiredLevelForArea(area.AreaKey) == nextLevel)
+            .Select(area => area.DisplayName)
+            .ToList();
+
+        return (nextLevel, areas);
+    }
+
+    private static string FormatAreaList(IReadOnlyList<string> areas)
+    {
+        if (areas.Count == 0)
+        {
+            return "";
+        }
+
+        if (areas.Count == 1)
+        {
+            return areas[0];
+        }
+
+        if (areas.Count == 2)
+        {
+            return $"{areas[0]} and {areas[1]}";
+        }
+
+        return string.Join(", ", areas.Take(areas.Count - 1)) + $", and {areas[^1]}";
+    }
 
     private void ConfirmLanding()
     {

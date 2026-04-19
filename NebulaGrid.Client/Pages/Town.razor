@@ -14,7 +14,7 @@
     <div class="town-shell">
         <div class="town-lock-card">
             <h2>Frontier Hub locked</h2>
-            <p>@PlayerService.GetUnlockText("town"). Current Pilot Level: @PlayerService.CurrentLevel.</p>
+            <p>@PlayerService.GetUnlockText("town").</p>
         </div>
     </div>
 }
@@ -25,27 +25,7 @@ else
             <div>
                 <p class="town-eyebrow">Frontier Hub</p>
                 <h1>Build the city behind your idle roster</h1>
-                <p class="town-lede">Each district unlocks or amplifies reserve pilot jobs. Survey Office boosts passive credits, Freight Depot enables convoy fuel runs, and Reactor Annex turns idle drill time into XP.</p>
-            </div>
-            <div class="town-side-panels">
-                <div class="town-bank">
-                    <span>Credits</span>
-                    <strong>@PlayerService.Resource1</strong>
-                    <span>Fuel</span>
-                    <strong>@PlayerService.Resource2</strong>
-                    <span>Alloy</span>
-                    <strong>@PlayerService.Alloy</strong>
-                    <span>Biomass</span>
-                    <strong>@PlayerService.Biomass</strong>
-                </div>
-                <div class="town-xp-panel">
-                    <span>Pilot Progress</span>
-                    <strong>LVL @PlayerService.CurrentLevel</strong>
-                    <small>@PlayerService.CurrentXP / @GetXpThreshold() XP</small>
-                    <div class="town-xp-track">
-                        <div class="town-xp-fill" style="width: @GetXpPercent().ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></div>
-                    </div>
-                </div>
+                <p class="town-lede">Each district unlocks or amplifies idle duties. Ship Upgrade boosts flying income, Garden Upgrade powers gardening routes, and Better Loot Box strengthens gambling XP loops.</p>
             </div>
         </section>
 
@@ -73,7 +53,7 @@ else
                 @foreach (var job in reserveJobs)
                 {
                     var unlocked = PlayerService.IsReserveJobUnlocked(job.Key);
-                    var isActive = string.Equals((PlayerService.PassiveJobKey ?? string.Empty).Trim(), job.Key, StringComparison.OrdinalIgnoreCase);
+                    var isActive = string.Equals(NormalizePassiveJobKey(PlayerService.PassiveJobKey), job.Key, StringComparison.OrdinalIgnoreCase);
                     <article class="reserve-job-card @(unlocked ? "online" : "locked") @(isActive ? "active" : string.Empty)">
                         <div class="reserve-job-head">
                             <div>
@@ -106,10 +86,9 @@ else
             @foreach (var building in buildings)
             {
                 var nextLevel = building.Level + 1;
-                var upgradeRequirement = PlayerService.GetTownUpgradeRequirementText(building.Key, nextLevel);
                 var isMaxed = building.Level >= 5;
                 var missingResources = PlayerService.Resource1 < building.CreditCost || PlayerService.Alloy < building.AlloyCost;
-                var canUpgrade = !isMaxed && PlayerService.CanUpgradeTownBuilding(building.Key, nextLevel) && !missingResources;
+                var canUpgrade = !isMaxed && !missingResources;
                 <article class="town-card @(building.Level > 0 ? "online" : "offline")">
                     <div class="town-card-head">
                         <div>
@@ -125,19 +104,10 @@ else
                         <span>@building.BonusText(building.Level)</span>
                     </div>
 
-                    <div class="town-chain">
-                        <strong>Chain</strong>
-                        <span>@GetBuildingChainText(building.Key, nextLevel)</span>
-                    </div>
-
                     <div class="town-requirement @(canUpgrade ? "ready" : "locked")">
                         @if (isMaxed)
                         {
                             <span>District fully established.</span>
-                        }
-                        else if (!string.IsNullOrWhiteSpace(upgradeRequirement))
-                        {
-                            <span>@upgradeRequirement</span>
                         }
                         else if (missingResources)
                         {
@@ -150,7 +120,7 @@ else
                     </div>
 
                     <button class="town-upgrade"
-                            title="@(isMaxed ? "This district is already maxed." : upgradeRequirement ?? string.Empty)"
+                title="@(isMaxed ? "This district is already maxed." : string.Empty)"
                             disabled="@(!canUpgrade)"
                             @onclick="() => UpgradeBuildingAsync(building.Key)">
                         @(isMaxed ? "Maxed" : $"Upgrade ({building.CreditCost} Credits / {building.AlloyCost} Alloy)")
@@ -196,30 +166,36 @@ else
 
         buildings.Add(new TownBuildingViewModel
         {
-            Key = "survey-office",
+            Key = "ship-upgrade",
             Tag = "Economy",
-            Title = "Survey Office",
-            Description = "Keeps reserve prospectors charting profitable asteroid lanes between active sessions.",
-            UnlockText = level => level > 0 ? "Survey Sweep unlocked" : "Unlocks Survey Sweep",
-            BonusText = level => $"+{level * 3} passive credit rate and +{level} reserve drill XP"
+            Title = "Ship Upgrade",
+            Description = "Keeps reserve pilots flying profitable asteroid routes between active sessions.",
+            UnlockText = level => level > 0 ? "Flying Duty unlocked" : "Unlocks Flying Duty",
+            BonusText = level => level > 0
+                ? $"Game2 collection boost: +{level * 12}% resources"
+                : "Game2 collection boost: +0% resources"
         });
         buildings.Add(new TownBuildingViewModel
         {
-            Key = "freight-depot",
+            Key = "garden-upgrade",
             Tag = "Logistics",
-            Title = "Freight Depot",
-            Description = "Dispatches quartermasters on side-routes that return with organized fuel convoys.",
-            UnlockText = level => level > 0 ? "Freight Convoy unlocked" : "Unlocks Freight Convoy",
-            BonusText = level => $"+{level} fuel per convoy cycle and +{level} logistics drill XP"
+            Title = "Garden Upgrade",
+            Description = "Supports reserve gardeners on side-routes that return with stable fuel convoys.",
+            UnlockText = level => level > 0 ? "Gardening Duty unlocked" : "Unlocks Gardening Duty",
+            BonusText = level => level > 0
+                ? $"Bio Dome harvest boost: +{level * 15}% biomass"
+                : "Bio Dome harvest boost: +0% biomass"
         });
         buildings.Add(new TownBuildingViewModel
         {
-            Key = "reactor-annex",
+            Key = "better-loot-box",
             Tag = "Training",
-            Title = "Reactor Annex",
-            Description = "Lets reserve vanguards run controlled plasma drills that feed player and reserve pilot XP.",
-            UnlockText = level => level > 0 ? "Reactor Drill unlocked" : "Unlocks Reactor Drill",
-            BonusText = level => $"+{level * 2} player XP and +{level} reserve pilot XP per drill cycle"
+            Title = "Better Loot Box",
+            Description = "Lets reserve gamblers run controlled risk cycles that feed player and reserve pilot XP.",
+            UnlockText = level => level > 0 ? "Gambling Duty unlocked" : "Unlocks Gambling Duty",
+            BonusText = level => level > 0
+                ? $"Stellar Cargo reward boost: +{level * 10}% drops"
+                : "Stellar Cargo reward boost: +0% drops"
         });
     }
 
@@ -232,30 +208,30 @@ else
 
         reserveJobs.Add(new ReserveJobViewModel
         {
-            Key = "survey",
+            Key = "flying",
             Tag = "Economy",
-            Title = "Survey Sweep",
-            Icon = "📡",
-            Description = "Reserve prospectors scan side belts and bring back passive credit income.",
-            BonusText = level => level > 0 ? $"Survey Office LVL {level}: stronger credit sweeps and reserve pilot XP." : "Requires Survey Office LVL 1."
+            Title = "Flying Duty",
+            Icon = "🚀",
+            Description = "Reserve pilots fly side belts and bring back passive credit income.",
+            BonusText = level => level > 0 ? $"Ship Upgrade LVL {level}: stronger flying income and reserve pilot XP." : "Requires Ship Upgrade LVL 1."
         });
         reserveJobs.Add(new ReserveJobViewModel
         {
-            Key = "hauling",
+            Key = "gardening",
             Tag = "Logistics",
-            Title = "Freight Convoy",
-            Icon = "⛽",
-            Description = "Quartermasters run convoy loops and return with fuel caches while you are offline.",
-            BonusText = level => level > 0 ? $"Freight Depot LVL {level}: larger fuel convoys and logistics XP." : "Requires Freight Depot LVL 1."
+            Title = "Gardening Duty",
+            Icon = "🌱",
+            Description = "Gardeners run growth loops and return with fuel caches while you are offline.",
+            BonusText = level => level > 0 ? $"Garden Upgrade LVL {level}: larger fuel routes and growth XP." : "Requires Garden Upgrade LVL 1."
         });
         reserveJobs.Add(new ReserveJobViewModel
         {
-            Key = "reactor",
+            Key = "gambling",
             Tag = "Training",
-            Title = "Reactor Drill",
-            Icon = "⚛",
-            Description = "Vanguards perform controlled drill cycles that feed player XP and reserve pilot growth.",
-            BonusText = level => level > 0 ? $"Reactor Annex LVL {level}: more player XP and reserve pilot XP." : "Requires Reactor Annex LVL 1."
+            Title = "Gambling Duty",
+            Icon = "🎲",
+            Description = "Gamblers perform controlled risk cycles that feed player XP and reserve pilot growth.",
+            BonusText = level => level > 0 ? $"Better Loot Box LVL {level}: more player XP and reserve pilot XP." : "Requires Better Loot Box LVL 1."
         });
     }
 
@@ -283,7 +259,7 @@ else
 
             foreach (var building in buildings)
             {
-                building.Level = townBuildings.FirstOrDefault(x => x.BuildingKey == building.Key)?.Level ?? 0;
+                building.Level = townBuildings.FirstOrDefault(x => string.Equals(NormalizeTownBuildingKey(x.BuildingKey), building.Key, StringComparison.OrdinalIgnoreCase))?.Level ?? 0;
             }
         }
         catch (Exception ex)
@@ -311,7 +287,7 @@ else
         PlayerService.UpdateTownBuildings(updatedBuildings);
         foreach (var building in buildings)
         {
-            building.Level = updatedBuildings.FirstOrDefault(x => x.BuildingKey == building.Key)?.Level ?? 0;
+            building.Level = updatedBuildings.FirstOrDefault(x => string.Equals(NormalizeTownBuildingKey(x.BuildingKey), building.Key, StringComparison.OrdinalIgnoreCase))?.Level ?? 0;
         }
 
         var upgradedBuilding = buildings.First(x => x.Key == buildingKey);
@@ -372,31 +348,24 @@ else
         }
     }
 
-    private static string GetBuildingChainText(string buildingKey, int targetLevel) => buildingKey switch
-    {
-        "freight-depot" => $"Needs Survey Office LVL {targetLevel} before this district can reach LVL {targetLevel}.",
-        "reactor-annex" => $"Needs Freight Depot LVL {targetLevel} before this district can reach LVL {targetLevel}.",
-        _ => "Foundational district. Higher Survey Office levels unlock the rest of the hub chain."
-    };
-
     private int GetBuildingLevelForJob(string jobKey) => jobKey switch
     {
-        "hauling" => PlayerService.FreightDepotLevel,
-        "reactor" => PlayerService.ReactorAnnexLevel,
+        "gardening" => PlayerService.FreightDepotLevel,
+        "gambling" => PlayerService.ReactorAnnexLevel,
         _ => PlayerService.SurveyOfficeLevel
     };
 
-    private static string GetPassiveJobTitle(string? jobKey) => (jobKey ?? string.Empty).Trim().ToLowerInvariant() switch
+    private static string GetPassiveJobTitle(string? jobKey) => NormalizePassiveJobKey(jobKey) switch
     {
-        "hauling" => "Freight Convoy",
-        "reactor" => "Reactor Drill",
-        _ => "Survey Sweep"
+        "gardening" => "Gardening Duty",
+        "gambling" => "Gambling Duty",
+        _ => "Flying Duty"
     };
 
-    private static string GetPassiveJobSubtitle(string? jobKey) => (jobKey ?? string.Empty).Trim().ToLowerInvariant() switch
+    private static string GetPassiveJobSubtitle(string? jobKey) => NormalizePassiveJobKey(jobKey) switch
     {
-        "hauling" => "Fuel-focused reserve route",
-        "reactor" => "XP-focused reserve route",
+        "gardening" => "Fuel-focused reserve route",
+        "gambling" => "XP-focused reserve route",
         _ => "Credit-focused reserve route"
     };
 
@@ -412,9 +381,33 @@ else
 
         return jobKey switch
         {
-            "hauling" => GetHaulingPreview(previewMinutes, buildingLevel),
-            "reactor" => GetReactorPreview(previewMinutes, buildingLevel),
+            "gardening" => GetHaulingPreview(previewMinutes, buildingLevel),
+            "gambling" => GetReactorPreview(previewMinutes, buildingLevel),
             _ => GetSurveyPreview(previewMinutes, buildingLevel)
+        };
+    }
+
+    private static string NormalizePassiveJobKey(string? jobKey)
+    {
+        var normalized = (jobKey ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "survey" => "flying",
+            "hauling" => "gardening",
+            "reactor" => "gambling",
+            _ => normalized
+        };
+    }
+
+    private static string NormalizeTownBuildingKey(string? buildingKey)
+    {
+        var normalized = (buildingKey ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "survey-office" => "ship-upgrade",
+            "freight-depot" => "garden-upgrade",
+            "reactor-annex" => "better-loot-box",
+            _ => normalized
         };
     }
 
@@ -445,16 +438,15 @@ else
 
     private async void HandleResourceChanged()
     {
-        await EnsureLoadedAsync();
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private int GetXpThreshold() => Math.Max(100, PlayerService.CurrentLevel * 100);
-
-    private double GetXpPercent()
-    {
-        var threshold = GetXpThreshold();
-        return threshold <= 0 ? 0 : Math.Clamp(PlayerService.CurrentXP * 100d / threshold, 0, 100);
+        try
+        {
+            await EnsureLoadedAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Town resource handler failed: {ex.Message}");
+        }
     }
 
     public void Dispose()
@@ -474,17 +466,17 @@ else
 
         public int CreditCost => Key switch
         {
-            "survey-office" => 700 * (Level + 1),
-            "freight-depot" => 950 * (Level + 1),
-            "reactor-annex" => 1200 * (Level + 1),
+            "ship-upgrade" => 700 * (Level + 1),
+            "garden-upgrade" => 950 * (Level + 1),
+            "better-loot-box" => 1200 * (Level + 1),
             _ => 800 * (Level + 1)
         };
 
         public int AlloyCost => Key switch
         {
-            "survey-office" => 6 * (Level + 1),
-            "freight-depot" => 10 * (Level + 1),
-            "reactor-annex" => 14 * (Level + 1),
+            "ship-upgrade" => 6 * (Level + 1),
+            "garden-upgrade" => 10 * (Level + 1),
+            "better-loot-box" => 14 * (Level + 1),
             _ => 8 * (Level + 1)
         };
     }
@@ -518,18 +510,12 @@ else
         margin-bottom: 24px;
     }
 
-    .town-side-panels {
-        min-width: 240px;
-        display: grid;
-        gap: 14px;
-    }
-
     .town-eyebrow {
         margin: 0 0 8px;
         text-transform: uppercase;
-        letter-spacing: 0.14em;
-        color: #f1c46a;
-        font-size: 0.78rem;
+        color: rgba(245, 239, 228, 0.66);
+        letter-spacing: 0.11em;
+        font-size: 0.74rem;
     }
 
     .town-header h1 {
@@ -540,68 +526,6 @@ else
     .town-lede {
         max-width: 760px;
         color: rgba(245, 239, 228, 0.74);
-    }
-
-    .town-bank {
-        min-width: 220px;
-        display: grid;
-        gap: 6px;
-        padding: 18px;
-        border-radius: 18px;
-        background: rgba(10, 17, 24, 0.82);
-        border: 1px solid rgba(241, 196, 106, 0.24);
-    }
-
-    .town-bank span {
-        color: rgba(245, 239, 228, 0.68);
-    }
-
-    .town-bank strong {
-        font-size: 1.5rem;
-        color: #8fdcff;
-    }
-
-    .town-xp-panel {
-        display: grid;
-        gap: 6px;
-        padding: 18px;
-        border-radius: 18px;
-        background: rgba(10, 17, 24, 0.82);
-        border: 1px solid rgba(143, 220, 255, 0.28);
-    }
-
-    .town-xp-panel span,
-    .town-xp-panel small {
-        color: rgba(245, 239, 228, 0.68);
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        font-size: 0.72rem;
-    }
-
-    .town-xp-panel strong {
-        font-size: 1.3rem;
-        color: #f1c46a;
-    }
-
-    .town-xp-panel small {
-        text-transform: none;
-        letter-spacing: normal;
-        font-size: 0.85rem;
-    }
-
-    .town-xp-track {
-        margin-top: 4px;
-        height: 8px;
-        border-radius: 999px;
-        overflow: hidden;
-        background: rgba(255, 255, 255, 0.12);
-    }
-
-    .town-xp-fill {
-        height: 100%;
-        border-radius: 999px;
-        background: linear-gradient(90deg, #f1c46a, #8fdcff);
-        transition: width 0.2s ease;
     }
 
     .town-status,
@@ -839,6 +763,11 @@ else
     .town-chain span {
         color: rgba(245, 239, 228, 0.78);
         line-height: 1.4;
+    }
+
+    .town-requirement strong {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
     }
 
     .town-requirement.ready {

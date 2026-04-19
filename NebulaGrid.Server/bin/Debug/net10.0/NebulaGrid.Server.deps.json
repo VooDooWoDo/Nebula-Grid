@@ -12,7 +12,7 @@
           "Microsoft.AspNetCore.OpenApi": "10.0.5",
           "Microsoft.EntityFrameworkCore.Design": "9.0.0",
           "Microsoft.EntityFrameworkCore.Sqlite": "9.0.0",
-          "NebulaGrid.Client": "1.0.0-alpha",
+          "NebulaGrid.Client": "1.0.1-alpha.5",
           "NebulaGrid.Shared": "1.0.0"
         },
         "runtime": {
@@ -676,7 +676,7 @@
           }
         }
       },
-      "NebulaGrid.Client/1.0.0-alpha": {
+      "NebulaGrid.Client/1.0.1-alpha.5": {
         "dependencies": {
           "Microsoft.AspNetCore.Components.WebAssembly": "10.0.5",
           "Microsoft.DotNet.HotReload.WebAssembly.Browser": "10.0.201",
@@ -684,8 +684,8 @@
         },
         "runtime": {
           "NebulaGrid.Client.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.0.0.0"
+            "assemblyVersion": "1.0.1.0",
+            "fileVersion": "1.0.1.0"
           }
         }
       },
@@ -943,7 +943,7 @@
       "path": "system.composition.typedparts/7.0.0",
       "hashPath": "system.composition.typedparts.7.0.0.nupkg.sha512"
     },
-    "NebulaGrid.Client/1.0.0-alpha": {
+    "NebulaGrid.Client/1.0.1-alpha.5": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

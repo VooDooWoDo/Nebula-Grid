@@ -40,7 +40,7 @@
                 <h2>@account.AccountName</h2>
                 <p>@GetAccountProgressSummary(account, isActive)</p>
                 <div class="profile-stats">
-                    <span>@account.UnlockedSlotCount / 3 slots online</span>
+                    <span>@account.UnlockedSlotCount / 4 slots online</span>
                     <span>+@account.CreditBonusPercent% credits</span>
                 </div>
                 <div class="profile-actions">
@@ -224,22 +224,29 @@
 
     private async void HandleResourceChanged()
     {
-        if (PlayerService.AccountProfileId <= 0)
+        try
         {
-            currentAccount = null;
+            if (PlayerService.AccountProfileId <= 0)
+            {
+                currentAccount = null;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var matchingAccount = accounts.FirstOrDefault(account => account.AccountProfileID == PlayerService.AccountProfileId);
+            if (matchingAccount is null)
+            {
+                await LoadAccountsAsync();
+                matchingAccount = accounts.FirstOrDefault(account => account.AccountProfileID == PlayerService.AccountProfileId);
+            }
+
+            currentAccount = matchingAccount;
             await InvokeAsync(StateHasChanged);
-            return;
         }
-
-        var matchingAccount = accounts.FirstOrDefault(account => account.AccountProfileID == PlayerService.AccountProfileId);
-        if (matchingAccount is null)
+        catch (Exception ex)
         {
-            await LoadAccountsAsync();
-            matchingAccount = accounts.FirstOrDefault(account => account.AccountProfileID == PlayerService.AccountProfileId);
+            Console.WriteLine($"Accounts resource handler failed: {ex.Message}");
         }
-
-        currentAccount = matchingAccount;
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task CreateAccountAsync()

@@ -1,6 +1,18 @@
 ﻿<Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)"/>
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        <ErrorBoundary>
+            <ChildContent>
+                <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)"/>
+                <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+            </ChildContent>
+            <ErrorContent Context="exception">
+                <LayoutView Layout="@typeof(MainLayout)">
+                    <section style="margin: 2rem 0; padding: 1rem; border: 1px solid #a33; border-radius: 8px; background: #1a0f0f; color: #ffdede;">
+                        <h1>Client runtime error</h1>
+                        <p>@exception.Message</p>
+                    </section>
+                </LayoutView>
+            </ErrorContent>
+        </ErrorBoundary>
     </Found>
 </Router>

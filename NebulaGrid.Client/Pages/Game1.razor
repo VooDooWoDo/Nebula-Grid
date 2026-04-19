@@ -118,10 +118,11 @@
 <div class="space-bg">
     <h1>🚀 Space Idle Terminal</h1>
 
-    <button class="orbit-btn" @onclick="AddMoneyAndSave">Collect (+5000)</button>
+    <button class="orbit-btn" @onclick="AddMoneyAndSave">Collect (+100 Credits)</button>
 
     <div class="admin-panel">
         <p style="color: #666; font-size: 0.8rem;">Danger zone / System administration</p>
+        <button class="btn-reset" @onclick="GrantTestXpAsync">TEST: +50 XP</button>
         <button class="btn-reset" @onclick="FullReset">FULL DATA RESET</button>
     </div>
 </div>
@@ -194,23 +195,9 @@
 
     private async Task AddMoneyAndSave()
     {
-        var creditBurst = 5000;
+        var creditBurst = 100;
         var fuelBurst = 0;
         var xpBurst = 0;
-
-        switch (PlayerService.ActiveCommanderClass)
-        {
-            case "Quartermaster":
-                fuelBurst = 6 + PlayerService.ActiveCommanderLogisticsSkill + PlayerService.ActiveCommanderLogisticsTreeLevel;
-                creditBurst += 400;
-                break;
-            case "Vanguard":
-                xpBurst = 40 + (PlayerService.ActiveCommanderReactorSkill * 10) + (PlayerService.ActiveCommanderReactorTreeLevel * 15);
-                break;
-            default:
-                creditBurst += 1500 + (PlayerService.ActiveCommanderMiningSkill * 250) + (PlayerService.ActiveCommanderMiningTreeLevel * 400);
-                break;
-        }
 
         PlayerService.Resource1 += creditBurst;
         PlayerService.Resource2 += fuelBurst;
@@ -226,6 +213,19 @@
         {
             AddFloatingText($"+{xpBurst} XP", "#92ffc6", 90);
         }
+
+        game1State.LastSaved = DateTime.UtcNow;
+        await SaveGame1State();
+        await SavePlayerAsync();
+        Status.NotifyResourceChanged();
+    }
+
+    private async Task GrantTestXpAsync()
+    {
+        const int xpBurst = 50;
+        PlayerService.AddXP(xpBurst);
+
+        AddFloatingText($"+{xpBurst} XP", "#92ffc6", 0);
 
         game1State.LastSaved = DateTime.UtcNow;
         await SaveGame1State();

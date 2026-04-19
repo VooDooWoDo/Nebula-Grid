@@ -10,4 +10,6 @@ public class LootboxResult
     public int NewResource4 { get; set; }
     public int NewPilotXP { get; set; }
     public int NewPilotLevel { get; set; }
+    public int PilotXpGained { get; set; }
+    public int AccountXpGained { get; set; }
 }

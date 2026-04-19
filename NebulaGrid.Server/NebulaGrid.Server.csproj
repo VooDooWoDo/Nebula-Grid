@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UseSharedCompilation>false</UseSharedCompilation>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +21,16 @@
   <ItemGroup>
     <ProjectReference Include="..\NebulaGrid.Client\NebulaGrid.Client.csproj" />
     <ProjectReference Include="..\NebulaGrid.Shared\NebulaGrid.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="artifacts\**\*" />
+    <None Remove="artifacts\**\*" />
+    <EmbeddedResource Remove="artifacts\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\CHANGELOG.md" Link="wwwroot\CHANGELOG.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

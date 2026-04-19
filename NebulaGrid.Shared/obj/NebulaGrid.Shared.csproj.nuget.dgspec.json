@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.Shared\\NebulaGrid.Shared.csproj": {}
+    "C:\\Users\\Ildis\\Desktop\\SpaceIdle\\Nebula-Grid\\NebulaGrid.Shared\\NebulaGrid.Shared.csproj": {}
   },
   "projects": {
-    "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.Shared\\NebulaGrid.Shared.csproj": {
+    "C:\\Users\\Ildis\\Desktop\\SpaceIdle\\Nebula-Grid\\NebulaGrid.Shared\\NebulaGrid.Shared.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.Shared\\NebulaGrid.Shared.csproj",
+        "projectUniqueName": "C:\\Users\\Ildis\\Desktop\\SpaceIdle\\Nebula-Grid\\NebulaGrid.Shared\\NebulaGrid.Shared.csproj",
         "projectName": "NebulaGrid.Shared",
-        "projectPath": "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.Shared\\NebulaGrid.Shared.csproj",
-        "packagesPath": "C:\\Users\\tobo0\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\tobo0\\Desktop\\Nebula-Grid\\NebulaGrid.Shared\\obj\\",
+        "projectPath": "C:\\Users\\Ildis\\Desktop\\SpaceIdle\\Nebula-Grid\\NebulaGrid.Shared\\NebulaGrid.Shared.csproj",
+        "packagesPath": "C:\\Users\\Ildis\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Ildis\\Desktop\\SpaceIdle\\Nebula-Grid\\NebulaGrid.Shared\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\tobo0\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "C:\\Users\\Ildis\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"

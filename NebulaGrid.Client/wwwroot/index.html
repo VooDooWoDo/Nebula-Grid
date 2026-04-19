@@ -22,13 +22,113 @@
         <div class="loading-progress-text"></div>
     </div>
 
+    <script>
+        (function () {
+            const statusElement = document.querySelector('.loading-progress-text');
+            let bootCompleted = false;
+
+            function setStatus(message, isError) {
+                if (!statusElement) {
+                    return;
+                }
+
+                statusElement.textContent = message;
+                if (isError) {
+                    statusElement.classList.add('startup-error');
+                }
+            }
+
+            function hasBootCompleted() {
+                const app = document.getElementById('app');
+                if (!app) {
+                    return false;
+                }
+
+                return !app.querySelector('.loading-progress');
+            }
+
+            const bootProbe = window.setInterval(function () {
+                if (hasBootCompleted()) {
+                    bootCompleted = true;
+                    window.clearInterval(bootProbe);
+                }
+            }, 500);
+
+            window.addEventListener('error', function (event) {
+                const message = event && event.message ? event.message : 'Unknown startup error.';
+                setStatus('Startup error: ' + message, true);
+            });
+
+            window.addEventListener('unhandledrejection', function (event) {
+                const reason = event && event.reason ? String(event.reason) : 'Unhandled promise rejection.';
+                setStatus('Startup error: ' + reason, true);
+            });
+
+            window.setTimeout(function () {
+                if (!bootCompleted && !hasBootCompleted()) {
+                    setStatus('Startup timeout. Try Ctrl+F5. If this repeats, disable browser extensions for localhost.', true);
+                }
+            }, 15000);
+        })();
+    </script>
+
     <div id="blazor-error-ui">
         An unhandled error has occurred.
         <a href="." class="reload">Reload</a>
         <span class="dismiss">🗙</span>
     </div>
     <script src="js/nebulaStorage.js"></script>
-    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script>
+        const startupRetryKey = 'nebula.startup.retry.once';
+
+        function tryStartupRetry(errorText) {
+            const isDotnetModuleError = (errorText || '').toLowerCase().includes('dotnet.js');
+            if (!isDotnetModuleError) {
+                return false;
+            }
+
+            if (sessionStorage.getItem(startupRetryKey) === '1') {
+                return false;
+            }
+
+            sessionStorage.setItem(startupRetryKey, '1');
+            const reloadUrl = new URL(window.location.href);
+            reloadUrl.searchParams.set('startupRetry', Date.now().toString());
+            window.location.replace(reloadUrl.toString());
+            return true;
+        }
+
+        Blazor.start({
+            loadBootResource: function (type, name, defaultUri) {
+                // Debug symbol downloads can 404 during watch/hash transitions.
+                // Return an empty successful response so startup stays stable.
+                if (type === 'pdb') {
+                    return new Response(new Uint8Array(0), {
+                        status: 200,
+                        headers: {
+                            'Content-Type': 'application/octet-stream'
+                        }
+                    });
+                }
+
+                return defaultUri;
+            }
+        }).then(function () {
+            sessionStorage.removeItem(startupRetryKey);
+        }).catch(function (error) {
+            const errorText = String(error);
+            if (tryStartupRetry(errorText)) {
+                return;
+            }
+
+            const statusElement = document.querySelector('.loading-progress-text');
+            if (statusElement) {
+                statusElement.textContent = 'Startup error: ' + errorText;
+                statusElement.classList.add('startup-error');
+            }
+        });
+    </script>
 </body>
 
 </html>

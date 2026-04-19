@@ -17,97 +17,97 @@ build_property.EnforceExtendedAnalyzerRules =
 build_property._SupportedPlatformList = browser
 build_property.RootNamespace = NebulaGrid.Client
 build_property.RootNamespace = NebulaGrid.Client
-build_property.ProjectDir = C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Client\
+build_property.ProjectDir = C:\Users\Ildis\Desktop\SpaceIdle\Nebula-Grid\nebulagrid.client\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = false
 build_property.RazorLangVersion = 9.0
 build_property.SupportLocalizedComponentNames = 
 build_property.GenerateRazorMetadataSourceChecksumAttributes = 
-build_property.MSBuildProjectDirectory = C:\Users\tobo0\Desktop\Nebula-Grid\NebulaGrid.Client
+build_property.MSBuildProjectDirectory = C:\Users\Ildis\Desktop\SpaceIdle\Nebula-Grid\nebulagrid.client
 build_property._RazorSourceGeneratorDebug = 
 build_property.EffectiveAnalysisLevelStyle = 10.0
 build_property.EnableCodeStyleSeverity = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/App.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/App.razor]
 build_metadata.AdditionalFiles.TargetPath = QXBwLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Accounts.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Accounts.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQWNjb3VudHMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Commanders.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Commanders.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ29tbWFuZGVycy5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Counter.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Counter.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcQ291bnRlci5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Galaxy.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Galaxy.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcR2FsYXh5LnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Game1.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Game1.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcR2FtZTEucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Game2.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Game2.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcR2FtZTIucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Game3.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Game3.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcR2FtZTMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Game4.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Game4.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcR2FtZTQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Game5.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Game5.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcR2FtZTUucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Home.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Home.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcSG9tZS5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Lootbox.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Lootbox.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcTG9vdGJveC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/NotFound.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/NotFound.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcTm90Rm91bmQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/PlayerSelection.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/PlayerSelection.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUGxheWVyU2VsZWN0aW9uLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Research.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Research.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcUmVzZWFyY2gucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Ships.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Ships.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcU2hpcHMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Town.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Town.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcVG93bi5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Pages/Weather.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Pages/Weather.razor]
 build_metadata.AdditionalFiles.TargetPath = UGFnZXNcV2VhdGhlci5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/_Imports.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/_Imports.razor]
 build_metadata.AdditionalFiles.TargetPath = X0ltcG9ydHMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Layout/MainLayout.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Layout/MainLayout.razor]
 build_metadata.AdditionalFiles.TargetPath = TGF5b3V0XE1haW5MYXlvdXQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = b-2b5id7o3ea
 
-[C:/Users/tobo0/Desktop/Nebula-Grid/NebulaGrid.Client/Layout/NavMenu.razor]
+[C:/Users/Ildis/Desktop/SpaceIdle/Nebula-Grid/nebulagrid.client/Layout/NavMenu.razor]
 build_metadata.AdditionalFiles.TargetPath = TGF5b3V0XE5hdk1lbnUucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = b-bsewwld1oh

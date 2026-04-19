@@ -4,15 +4,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.0.0-alpha</Version>
+    <Version>1.0.1-alpha.5</Version>
+    <UseSharedCompilation>false</UseSharedCompilation>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.5" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.5" PrivateAssets="all" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <Content Remove="artifacts\**\*" />
+    <None Remove="artifacts\**\*" />
+    <EmbeddedResource Remove="artifacts\**\*" />
     <ProjectReference Include="..\NebulaGrid.Shared\NebulaGrid.Shared.csproj" />
   </ItemGroup>
 

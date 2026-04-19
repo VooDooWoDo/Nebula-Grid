@@ -117,8 +117,15 @@ else
 
     private async void HandleResourceChanged()
     {
-        await EnsureLoadedAsync();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await EnsureLoadedAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ships resource handler failed: {ex.Message}");
+        }
     }
 
     private async Task LoadHangarAsync()

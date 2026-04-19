@@ -1,11 +1,6 @@
 @page "/research"
-@using System.Net.Http.Json
-@using NebulaGrid.Shared.Models
 @using NebulaGrid.Shared.Services
 @inject PlayerService PlayerService
-@inject GameStatus Status
-@inject HttpClient HttpClient
-@implements IDisposable
 
 <PageTitle>Research Lab - Nebula Grid</PageTitle>
 
@@ -22,8 +17,8 @@ else
     <div class="research-header">
         <div>
             <p class="eyebrow">Research Lab</p>
-            <h1>Long-cycle upgrades for your empire</h1>
-            <p class="lede">Fuel and biomass now feed your research lab. Invest them into permanent upgrades that reshape mining, cargo routing, and reactor crit output.</p>
+            <h1>Research upgrades temporarily offline</h1>
+            <p class="lede">Upgrade nodes are removed for now while new research paths are being redesigned.</p>
         </div>
         <div class="research-side-panels">
             <div class="fuel-panel">
@@ -45,33 +40,7 @@ else
         </div>
     </div>
 
-    @if (!string.IsNullOrWhiteSpace(statusMessage))
-    {
-        <div class="status-banner">@statusMessage</div>
-    }
-
-    <div class="research-grid">
-        @foreach (var node in nodes)
-        {
-            <article class="research-card">
-                <div class="research-meta">
-                    <span class="research-tag">@node.Tag</span>
-                    <span class="research-level">LVL @node.Level</span>
-                </div>
-
-                <h2>@node.Title</h2>
-                <p>@node.Description</p>
-
-                <div class="research-effect">@node.EffectText(node.Level)</div>
-
-                <button class="research-button"
-                        @onclick="() => BuyResearchAsync(node.Key)"
-                        disabled="@(PlayerService.SelectedPlayerId <= 0 || PlayerService.Resource2 < node.FuelCost || PlayerService.Biomass < node.BiomassCost)">
-                    Upgrade for @node.FuelCost Fuel • @node.BiomassCost Biomass
-                </button>
-            </article>
-        }
-    </div>
+    <div class="status-banner">All research upgrades are currently disabled. You can still use Fuel and Biomass in other systems.</div>
 </div>
 
 }
@@ -284,136 +253,6 @@ else
 </style>
 
 @code {
-    private readonly List<ResearchNodeViewModel> nodes = new();
-    private string? statusMessage;
-    private int hydratedPlayerId;
-
-    protected override async Task OnInitializedAsync()
-    {
-        Status.OnResourceChanged += HandleResourceChanged;
-        await EnsureLoadedAsync();
-    }
-
-    private async Task EnsureLoadedAsync()
-    {
-        if (nodes.Count == 0)
-        {
-            InitializeNodes();
-        }
-
-        if (PlayerService.SelectedPlayerId <= 0 || hydratedPlayerId == PlayerService.SelectedPlayerId)
-        {
-            return;
-        }
-
-        hydratedPlayerId = PlayerService.SelectedPlayerId;
-        await LoadResearchAsync();
-    }
-
-    private async void HandleResourceChanged()
-    {
-        await EnsureLoadedAsync();
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private void InitializeNodes()
-    {
-        nodes.Clear();
-        nodes.Add(new ResearchNodeViewModel
-        {
-            Key = "MiningEfficiency",
-            Tag = "Economy",
-            Title = "Mining Efficiency",
-            Description = "Boost every credit pulse from clicks, asteroid ore, and auto-drone income.",
-            EffectText = level => $"Current bonus: +{level * 15}% credit output"
-        });
-        nodes.Add(new ResearchNodeViewModel
-        {
-            Key = "LogisticsProtocols",
-            Tag = "Cargo",
-            Title = "Logistics Protocols",
-            Description = "Expand freighter routing and storage discipline so each asteroid run brings home more.",
-            EffectText = level => $"Current bonus: +{level * 20} cargo capacity"
-        });
-        nodes.Add(new ResearchNodeViewModel
-        {
-            Key = "ReactorTheory",
-            Tag = "Combat",
-            Title = "Reactor Theory",
-            Description = "Refine unstable plasma windows to trigger more critical bursts in the reactor core.",
-            EffectText = level => $"Current bonus: +{level * 2}% crit chance"
-        });
-    }
-
-    private async Task LoadResearchAsync()
-    {
-        if (PlayerService.SelectedPlayerId <= 0)
-        {
-            statusMessage = "Choose a pilot before investing in research.";
-            return;
-        }
-
-        var research = await HttpClient.GetFromJsonAsync<List<PlayerResearch>>($"api/game/player/{PlayerService.SelectedPlayerId}/research") ?? new List<PlayerResearch>();
-        PlayerService.UpdateResearch(research);
-
-        foreach (var node in nodes)
-        {
-            node.Level = research.FirstOrDefault(item => item.ResearchType == node.Key)?.Level ?? 0;
-        }
-    }
-
-    private async Task BuyResearchAsync(string researchKey)
-    {
-        if (PlayerService.SelectedPlayerId <= 0)
-        {
-            return;
-        }
-
-        var response = await HttpClient.PostAsync($"api/game/player/{PlayerService.SelectedPlayerId}/research/buy/{researchKey}", null);
-        if (!response.IsSuccessStatusCode)
-        {
-            statusMessage = await response.Content.ReadAsStringAsync();
-            return;
-        }
-
-        var research = await response.Content.ReadFromJsonAsync<List<PlayerResearch>>() ?? new List<PlayerResearch>();
-        PlayerService.UpdateResearch(research);
-
-        foreach (var node in nodes)
-        {
-            node.Level = research.FirstOrDefault(item => item.ResearchType == node.Key)?.Level ?? 0;
-        }
-
-        var updatedPlayer = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
-        if (updatedPlayer is not null)
-        {
-            PlayerService.UpdateFromPlayer(updatedPlayer);
-        }
-
-        var xpGain = 18 + nodes.First(node => node.Key == researchKey).Level * 4;
-        PlayerService.AddXP(xpGain);
-        var playerResponse = await HttpClient.PostAsJsonAsync("api/game/saveplayer", PlayerService.ToPlayer());
-        playerResponse.EnsureSuccessStatusCode();
-        await RefreshAccountProgressAsync();
-
-        statusMessage = $"Research upgraded and synced to your pilot state. +{xpGain} XP.";
-        Status.NotifyResourceChanged();
-    }
-
-    private async Task RefreshAccountProgressAsync()
-    {
-        if (PlayerService.AccountProfileId <= 0)
-        {
-            return;
-        }
-
-        var account = await HttpClient.GetFromJsonAsync<AccountProfile>($"api/game/account/{PlayerService.AccountProfileId}");
-        if (account is not null)
-        {
-            PlayerService.UpdateAccount(account);
-        }
-    }
-
     private int GetXpThreshold() => Math.Max(100, PlayerService.CurrentLevel * 100);
 
     private double GetXpPercent()
@@ -422,34 +261,4 @@ else
         return threshold <= 0 ? 0 : Math.Clamp(PlayerService.CurrentXP * 100d / threshold, 0, 100);
     }
 
-    private sealed class ResearchNodeViewModel
-    {
-        public string Key { get; set; } = string.Empty;
-        public string Tag { get; set; } = string.Empty;
-        public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public int Level { get; set; }
-        public Func<int, string> EffectText { get; set; } = _ => string.Empty;
-
-        public int FuelCost => Key switch
-        {
-            "MiningEfficiency" => 25 * (Level + 1),
-            "LogisticsProtocols" => 40 * (Level + 1),
-            "ReactorTheory" => 55 * (Level + 1),
-            _ => 100 * (Level + 1)
-        };
-
-        public int BiomassCost => Key switch
-        {
-            "MiningEfficiency" => 10 * (Level + 1),
-            "LogisticsProtocols" => 14 * (Level + 1),
-            "ReactorTheory" => 18 * (Level + 1),
-            _ => 20 * (Level + 1)
-        };
-    }
-
-    public void Dispose()
-    {
-        Status.OnResourceChanged -= HandleResourceChanged;
-    }
 }

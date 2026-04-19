@@ -24,6 +24,7 @@ public class Player
     public int LogisticsTreeLevel { get; set; }
     public int ReactorTreeLevel { get; set; }
     public DateTime LastActiveUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? OfflinePopupSeenUtc { get; set; }
     public AccountProfile? AccountProfile { get; set; }
 
     [NotMapped]
@@ -33,10 +34,19 @@ public class Player
     public int OfflineFuelGained { get; set; }
 
     [NotMapped]
+    public int OfflineAlloyGained { get; set; }
+
+    [NotMapped]
+    public int OfflineBiomassGained { get; set; }
+
+    [NotMapped]
     public int OfflinePlayerXpGained { get; set; }
 
     [NotMapped]
     public int OfflineReserveXpGained { get; set; }
+
+    [NotMapped]
+    public int OfflineAccountXpGained { get; set; }
 
     [NotMapped]
     public string? OfflineSummary { get; set; }

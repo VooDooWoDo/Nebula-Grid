@@ -1,0 +1,11 @@
+# Build-Ordner ignorieren
+bin/
+obj/
+artifacts/
+
+# Eigene Build-Logs oder versteckte VS-Dateien
+.vs/
+*.pdb
+*.dll
+# Log-Dateien ignorieren
+*.log

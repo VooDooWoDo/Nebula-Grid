@@ -3,6 +3,7 @@ namespace NebulaGrid.Shared.Models;
 public class IdleGameState
 {
     public int Id { get; set; }
+    public int PlayerID { get; set; }
     public long Currency { get; set; }
     public int IncomePerSecond { get; set; } = 1;
     public int ClickPower { get; set; } = 1;

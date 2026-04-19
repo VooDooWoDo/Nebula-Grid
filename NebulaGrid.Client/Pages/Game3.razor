@@ -252,8 +252,15 @@ else
 
     private async void HandleResourceChanged()
     {
-        await EnsureLoadedAsync();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await EnsureLoadedAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Game3 resource handler failed: {ex.Message}");
+        }
     }
 
     private async Task LoadPlotsAsync()
@@ -266,6 +273,10 @@ else
 
         try
         {
+            var townBuildings = await HttpClient.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{PlayerService.SelectedPlayerId}/town")
+                ?? new List<PlayerTownBuilding>();
+            PlayerService.UpdateTownBuildings(townBuildings);
+
             plots = await HttpClient.GetFromJsonAsync<List<FarmPlot>>($"api/game/player/{PlayerService.SelectedPlayerId}/farmplots") ?? new List<FarmPlot>();
             statusMessage = plots.Any(plot => plot.IsPlanted)
                 ? "Your planted crops were restored from the database."
@@ -328,7 +339,12 @@ else
 
     private async Task Harvest(FarmPlot plot)
     {
-        var harvestedResources = plot.ResourceYield;
+        var harvestedResources = ApplyGardenUpgradeHarvestBonus(plot.ResourceYield);
+        if (IsBioDomeSpecialist())
+        {
+            harvestedResources = (int)Math.Ceiling(harvestedResources * 1.2);
+        }
+
         var xpGain = Math.Max(6, harvestedResources / 10);
         PlayerService.Biomass += harvestedResources;
         PlayerService.AddXP(xpGain);
@@ -386,6 +402,23 @@ else
                 StateHasChanged();
             });
         });
+    }
+
+    private bool IsBioDomeSpecialist()
+    {
+        var normalizedClass = (PlayerService.PilotClass ?? string.Empty).Trim();
+        return normalizedClass is "Quartermaster" or "Gardener";
+    }
+
+    private int ApplyGardenUpgradeHarvestBonus(int baseYield)
+    {
+        var gardenLevel = Math.Max(0, PlayerService.FreightDepotLevel);
+        if (gardenLevel == 0)
+        {
+            return baseYield;
+        }
+
+        return (int)Math.Ceiling(baseYield * (1 + (gardenLevel * 0.15)));
     }
 
     public void Dispose()

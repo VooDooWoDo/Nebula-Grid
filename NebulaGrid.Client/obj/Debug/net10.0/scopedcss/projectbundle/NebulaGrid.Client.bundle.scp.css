@@ -141,6 +141,13 @@ main[b-2b5id7o3ea] {
     color: #f3cd7d;
 }
 
+.pilot-chip[b-2b5id7o3ea] {
+    border-color: rgba(150, 213, 255, 0.45);
+    background: rgba(54, 124, 186, 0.22);
+    color: #d2eeff;
+    font-weight: 700;
+}
+
     .top-row[b-2b5id7o3ea]  a, .top-row[b-2b5id7o3ea]  .btn-link {
         white-space: nowrap;
         margin-left: 1.5rem;

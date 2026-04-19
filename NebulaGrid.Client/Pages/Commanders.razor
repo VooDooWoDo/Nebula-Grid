@@ -14,14 +14,8 @@
         <div>
             <p class="eyebrow">Pilot Academy</p>
             <h1>Unlock your pilot identity</h1>
-            <p class="lede">Pilots now own their class and skill tree directly. Level 3 is the moment a cadet commits to one permanent doctrine, and each of your three hangar slots can cover a different role.</p>
-        </div>
-        <div class="academy-bank">
-            <span>Credits</span>
-            <strong>@PlayerService.Resource1</strong>
-            <span>Fuel</span>
-            <strong>@PlayerService.Resource2</strong>
-            <small>Class picks are permanent. Across three pilot slots, each class can be chosen once.</small>
+            <p class="lede">Your Main Pilot in Slot 1 stays classless. Support pilots in the other slots own class and skill trees directly. Level 3 is the moment a support pilot commits to one permanent doctrine.</p>
+            <small class="academy-header-note">Class picks are permanent for support pilots. Across Slots 2-4, each class can be chosen once.</small>
         </div>
     </section>
 
@@ -52,16 +46,43 @@
                 </div>
 
                 <div class="academy-bonuses">
-                    <span>+@PlayerService.CommanderMiningBonusPercent% Mining</span>
-                    <span>+@PlayerService.CommanderCargoBonus Cargo</span>
-                    <span>+@PlayerService.CommanderCritBonus% Crit</span>
+                    <div class="academy-gain-card">
+                        <strong>Credits</strong>
+                        <span>+@GetAcademyCreditsGain()/s Gain</span>
+                    </div>
+                    <div class="academy-gain-card">
+                        <strong>Alloy</strong>
+                        <span>+@GetAcademyAlloyGain()/s Gain</span>
+                    </div>
+                    <div class="academy-gain-card">
+                        <strong>Fuel</strong>
+                        <span>+@GetAcademyFuelGain()/s Gain</span>
+                    </div>
+                    <div class="academy-gain-card">
+                        <strong>Biomass</strong>
+                        <span>+@GetAcademyBiomassGain()/s Gain</span>
+                    </div>
+                </div>
+
+                <div class="academy-bonus-note">
+                    @GetAcademyDutyBonus()
                 </div>
 
                 <div class="academy-progress">
                     XP: @PlayerService.CurrentXP / @(Math.Max(1, PlayerService.CurrentLevel) * 100)
                 </div>
 
-                @if (PlayerService.CanChoosePilotClass)
+                @if (PlayerService.IsMainPilot)
+                {
+                    <div class="academy-lock-copy academy-lock-sequence">
+                        <div>
+                            <strong>Main Pilot</strong>
+                            <span>Slot 1 stays classless</span>
+                        </div>
+                        <p>Your Main Pilot gets passive resource support from the classed pilots in your other slots.</p>
+                    </div>
+                }
+                else if (PlayerService.CanChoosePilotClass)
                 {
                     <div class="class-unlock-stage">
                         <div class="unlock-stage-copy">
@@ -120,7 +141,7 @@
                             <button class="skill-upgrade"
                                     disabled="@(isBusy || PlayerService.Resource1 < GetSkillCost())"
                                     @onclick="UpgradeSkillAsync">
-                                Train (@GetSkillCost())
+                                Train (@GetSkillCost() Credits)
                             </button>
                         </div>
                     </div>
@@ -135,7 +156,7 @@
                             <button class="talent-upgrade"
                                     disabled="@(isBusy || GetTalentLevel() >= 3 || PlayerService.Resource1 < GetTalentCreditsCost() || PlayerService.Resource2 < GetTalentFuelCost())"
                                     @onclick="UpgradeTalentAsync">
-                                @(GetTalentLevel() >= 3 ? "Maxed" : $"Upgrade ({GetTalentCreditsCost()} / {GetTalentFuelCost()})")
+                                @(GetTalentLevel() >= 3 ? "Maxed" : $"Upgrade ({GetTalentCreditsCost()} Credits / {GetTalentFuelCost()} Fuel)")
                             </button>
                         </div>
                     </div>
@@ -153,10 +174,10 @@
             <article class="academy-card side-card">
                 <h2>Class Rules</h2>
                 <ul class="academy-rule-list">
-                    <li>Prospector focuses mining and credit generation.</li>
-                    <li>Quartermaster focuses cargo flow and fuel logistics.</li>
-                    <li>Vanguard focuses reactor pressure and crit output.</li>
-                    <li>Each of your three pilot slots should end up covering one class.</li>
+                    <li>Pilot dominates Asteroid Belt mining.</li>
+                    <li>Gardener dominates Bio Dome output and growth-oriented logistics.</li>
+                    <li>Gambler now focuses on Credits generation only.</li>
+                    <li>Slot 1 is your Main Pilot (classless). Slots 2-4 cover Pilot, Gardener, and Gambler once each.</li>
                 </ul>
             </article>
         </div>
@@ -169,9 +190,9 @@
     private bool isBusy;
     private List<ClassOption> classOptions =
     [
-        new("Prospector", "Mining specialist with the strongest credit scaling.", "Best for heavy credit bursts and extraction loops."),
-        new("Quartermaster", "Cargo and fuel specialist for supply-heavy play.", "Best for logistics growth, fuel flow and hold expansion."),
-        new("Vanguard", "Reactor and crit specialist for burst-focused play.", "Best for crit spikes, reactor pressure and XP-heavy tempo." )
+        new("Pilot", "Asteroid specialist with the strongest mining and credit consistency.", "Best for Asteroid Belt loops and reliable resource flow."),
+        new("Gardener", "Bio Dome specialist focused on growth and sustained logistics.", "Best for biomass farming and stable long-session scaling."),
+        new("Gambler", "Stellar Cargo specialist tuned for high-roll reward spikes.", "Best for lootbox value spikes, crit pressure, and burst XP." )
     ];
 
     protected override async Task OnInitializedAsync()
@@ -200,8 +221,15 @@
 
     private async void HandleResourceChanged()
     {
-        await EnsureLoadedAsync();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await EnsureLoadedAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Commanders resource handler failed: {ex.Message}");
+        }
     }
 
     private async Task LoadPilotAsync()
@@ -213,9 +241,6 @@
 
         statusMessage = null;
         var player = await HttpClient.GetFromJsonAsync<Player>($"api/game/player/{PlayerService.SelectedPlayerId}");
-        var townBuildings = await HttpClient.GetFromJsonAsync<List<PlayerTownBuilding>>($"api/game/player/{PlayerService.SelectedPlayerId}/town") ?? new List<PlayerTownBuilding>();
-        PlayerService.UpdateTownBuildings(townBuildings);
-
         if (player is not null)
         {
             PlayerService.UpdateFromPlayer(player);
@@ -236,7 +261,8 @@
         var slots = await HttpClient.GetFromJsonAsync<List<CharacterSlotSummary>>($"api/game/account/{PlayerService.AccountProfileId}/slots") ?? new List<CharacterSlotSummary>();
         var usedClasses = slots
             .Where(slot => slot.Player is not null && slot.Player.PlayerID != PlayerService.SelectedPlayerId && !string.IsNullOrWhiteSpace(slot.Player.PilotClass))
-            .Select(slot => slot.Player!.PilotClass)
+            .Select(slot => NormalizePilotClass(slot.Player!.PilotClass))
+            .Where(pilotClass => !string.IsNullOrWhiteSpace(pilotClass))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         classOptions = classOptions
@@ -311,25 +337,53 @@
     }
 
     private string GetClassHeadline() => string.IsNullOrWhiteSpace(PlayerService.PilotClass)
-        ? "Classless Cadet"
+        ? (PlayerService.IsMainPilot ? "Main Pilot (Classless)" : "Classless Cadet")
         : $"Class: {PlayerService.PilotClass}";
 
     private string GetRoleSummary() => string.IsNullOrWhiteSpace(PlayerService.PilotClass)
-        ? "Reach Level 3 to lock in a permanent specialization."
+        ? (PlayerService.IsMainPilot
+            ? "Main Pilot plays as your core character and receives support gains from your classed support pilots."
+            : "Reach Level 3 to lock in a permanent specialization.")
         : PlayerService.ActiveClassRoleSummary;
 
-    private string GetSkillKey() => PlayerService.PilotClass switch
+    private int GetAcademyCreditsGain() => PlayerService.IsMainPilot
+        ? 0
+        : PlayerService.ClassCreditFlowPerSecond;
+
+    private int GetAcademyAlloyGain() => PlayerService.IsMainPilot
+        ? PlayerService.AlloyPerSecond
+        : PlayerService.ClassAlloyFlowPerSecond;
+
+    private int GetAcademyFuelGain() => PlayerService.IsMainPilot
+        ? PlayerService.FuelPerSecond
+        : PlayerService.ClassFuelFlowPerSecond;
+
+    private int GetAcademyBiomassGain() => PlayerService.IsMainPilot
+        ? PlayerService.BiomassPerSecond
+        : PlayerService.ClassBiomassFlowPerSecond;
+
+    private string GetAcademyDutyBonus() => PlayerService.IsMainPilot
+        ? "Support Model: classed pilots in other slots push passive gains to your Main Pilot."
+        : GetSkillKey() switch
     {
-        "Quartermaster" => "logistics",
-        "Vanguard" => "reactor",
+        "logistics" => $"Training: +1 Fuel/+1 Biomass per level • Doctrine: +10% Fuel/Biomass per tier (Tier {GetTalentLevel()})",
+        "reactor" => $"Training: +10 Credits per level • Doctrine: +8% Credits per tier (Tier {GetTalentLevel()})",
+        "mining" => $"Training: +1 Alloy/+1 Fuel per level • Doctrine: +10% Alloy/Fuel per tier (Tier {GetTalentLevel()})",
+        _ => "Duty unlocks after class lock"
+    };
+
+    private string GetSkillKey() => NormalizePilotClass(PlayerService.PilotClass) switch
+    {
+        "Gardener" => "logistics",
+        "Gambler" => "reactor",
         _ => "mining"
     };
 
     private string GetSkillLabel() => GetSkillKey() switch
     {
-        "logistics" => "Logistics Training",
-        "reactor" => "Reactor Training",
-        _ => "Mining Training"
+        "logistics" => "Gardener Growth Training",
+        "reactor" => "Gambler Risk Training",
+        _ => "Pilot Flight Training"
     };
 
     private int GetSkillLevel() => GetSkillKey() switch
@@ -348,16 +402,16 @@
 
     private string GetTalentLabel() => GetSkillKey() switch
     {
-        "logistics" => "Freight Doctrine",
-        "reactor" => "Pressure Doctrine",
-        _ => "Extraction Doctrine"
+        "logistics" => "Bloom Doctrine",
+        "reactor" => "High-Roller Doctrine",
+        _ => "Apex Survey Doctrine"
     };
 
     private string GetTalentEffectText() => GetSkillKey() switch
     {
-        "logistics" => "+12 cargo per tier and stronger reserve hauling.",
-        "reactor" => "+3% crit per tier and stronger reactor reserve drills.",
-        _ => "+5% mining per tier and stronger survey reserve income."
+        "logistics" => "+10% Fuel and Biomass gain per tier.",
+        "reactor" => "+8% Credits gain per tier.",
+        _ => "+10% Alloy and Fuel gain per tier."
     };
 
     private int GetTalentLevel() => GetSkillKey() switch
@@ -392,6 +446,17 @@
         Status.OnResourceChanged -= HandleResourceChanged;
     }
 
+    private static string NormalizePilotClass(string? pilotClass) => (pilotClass ?? string.Empty).Trim() switch
+    {
+        "Prospector" => "Pilot",
+        "Quartermaster" => "Gardener",
+        "Vanguard" => "Gambler",
+        "Pilot" => "Pilot",
+        "Gardener" => "Gardener",
+        "Gambler" => "Gambler",
+        _ => string.Empty
+    };
+
     private sealed record ClassOption(string Key, string Description, string Signature)
     {
         public bool IsAvailable { get; init; } = true;
@@ -410,9 +475,7 @@
     }
 
     .academy-header {
-        display: flex;
-        justify-content: space-between;
-        gap: 24px;
+        display: block;
         margin-bottom: 24px;
     }
 
@@ -434,7 +497,6 @@
         color: rgba(246, 244, 239, 0.76);
     }
 
-    .academy-bank,
     .academy-card,
     .academy-empty {
         background: rgba(8, 19, 31, 0.82);
@@ -443,16 +505,13 @@
         box-shadow: 0 20px 35px rgba(0, 0, 0, 0.24);
     }
 
-    .academy-bank {
-        min-width: 260px;
-        display: grid;
-        gap: 6px;
-        align-content: start;
-        padding: 18px;
+    .academy-header-note {
+        display: block;
+        margin-top: 10px;
+        color: rgba(246, 244, 239, 0.68);
     }
 
-    .academy-bank span,
-    .academy-bank small,
+    .academy-header-note,
     .academy-lock-copy,
     .academy-assignment-copy span,
     .academy-assignment-copy small,
@@ -462,11 +521,6 @@
     .academy-talent-copy span,
     .academy-progress {
         color: rgba(246, 244, 239, 0.72);
-    }
-
-    .academy-bank strong {
-        font-size: 1.6rem;
-        color: #f1c46a;
     }
 
     .academy-status {
@@ -538,6 +592,27 @@
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     }
 
+    .academy-gain-card {
+        display: grid;
+        gap: 6px;
+    }
+
+    .academy-gain-card strong {
+        color: #f1c46a;
+        font-size: 0.84rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .academy-bonus-note {
+        margin-top: 10px;
+        padding: 14px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.045);
+        color: rgba(246, 244, 239, 0.8);
+        line-height: 1.45;
+    }
+
     .academy-bonuses span,
     .academy-skill,
     .academy-talent,
@@ -602,7 +677,9 @@
         height: 110px;
         border-radius: 999px;
         display: grid;
-        place-items: center;
+        justify-items: center;
+        align-content: center;
+        gap: 2px;
         background:
             radial-gradient(circle at center, rgba(8, 19, 31, 0.96) 46%, transparent 47%),
             conic-gradient(from 180deg, #f1c46a, #8fdcff, #f1c46a);
@@ -613,10 +690,15 @@
     .unlock-meter-ring span {
         display: block;
         text-align: center;
+        line-height: 1.1;
     }
 
     .unlock-meter-ring strong {
-        font-size: 1.2rem;
+        font-size: 1.15rem;
+    }
+
+    .unlock-meter-ring span {
+        font-size: 0.82rem;
     }
 
     .class-pick-panel-live {
